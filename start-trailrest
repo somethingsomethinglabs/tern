@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+unset ELECTRON_RUN_AS_NODE
+if [[ -x "$project_dir/desktop/release/Trailrest-linux-x64/Trailrest" ]]; then
+  exec "$project_dir/desktop/release/Trailrest-linux-x64/Trailrest" "$@"
+fi
+cd "$project_dir/desktop"
+exec npm start -- "$@"

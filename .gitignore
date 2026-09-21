@@ -7,3 +7,6 @@ dist/
 prototype/test-results/
 prototype/playwright-report/
 prototype/.vite/
+desktop/test-results/
+desktop/playwright-report/
+desktop/release/

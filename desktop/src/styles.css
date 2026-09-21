@@ -1,0 +1,601 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+:root {
+  font-family: Inter, Arial, sans-serif;
+  color: #26333b;
+  background: #26292b;
+  font-synthesis: none;
+  font-size: 14px;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+input,
+textarea {
+  font: inherit;
+}
+button {
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 6px;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+button:hover:not(:disabled) {
+  background: #e7edef;
+}
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid #1aa3af;
+  outline-offset: 2px;
+}
+button,
+input {
+  min-height: 34px;
+}
+svg {
+  flex-shrink: 0;
+}
+input,
+textarea {
+  min-width: 0;
+}
+.app {
+  height: 100dvh;
+  display: flex;
+  overflow: hidden;
+}
+.sidebar {
+  width: 280px;
+  flex-shrink: 0;
+  background: #242829;
+  color: #e8ecee;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #414648;
+}
+.brand {
+  height: 56px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #2b2e2f;
+}
+.brand strong {
+  font-size: 19px;
+  font-weight: 600;
+}
+.brand > span {
+  margin-left: auto;
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: #abb6ba;
+  border: 1px solid #50585b;
+  border-radius: 4px;
+  padding: 4px;
+}
+.brand svg {
+  color: #bbd1c5;
+}
+.task-search {
+  margin: 18px 14px 8px;
+  border: 1px solid #4a5256;
+  background: #2f3436;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 8px;
+}
+.task-search input {
+  color: #eef0f2;
+  background: none;
+  border: 0;
+  outline-offset: 0;
+  width: 100%;
+  font-size: 12px;
+}
+.task-search input::placeholder {
+  color: #afb7bc;
+}
+.new-task {
+  margin: 0 14px 20px;
+  justify-content: flex-start;
+  color: #d4dfe2;
+  padding: 8px;
+}
+.sidebar button:hover:not(:disabled) {
+  background: #3a4245;
+}
+.sidebar nav {
+  overflow: auto;
+  flex: 1;
+}
+.task-group {
+  margin: 0 10px 28px;
+}
+.task-group h2 {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  display: flex;
+  justify-content: space-between;
+  color: #a9b6bc;
+  padding: 0 12px;
+}
+.task-group h2 span {
+  letter-spacing: 0;
+}
+.task {
+  border-radius: 8px;
+  margin: 8px 0;
+}
+.task.selected {
+  background: #303638;
+  box-shadow: inset 0 1px #485055;
+}
+.task-title {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 12px 10px;
+  line-height: 1.45;
+  text-align: left;
+}
+.task-title span {
+  overflow-wrap: anywhere;
+}
+.pages {
+  padding: 0 8px 9px 23px;
+}
+.pages button {
+  width: 100%;
+  font-size: 11px;
+  color: #bfcbd0;
+  justify-content: flex-start;
+  padding: 7px;
+  min-height: 32px;
+  text-align: left;
+}
+.pages span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.pages i {
+  font-style: normal;
+  font-size: 9px;
+  color: #a8d2c0;
+}
+.pages .chosen {
+  background: #444e52;
+  color: white;
+}
+.pages .add-page {
+  color: #aab7bd;
+  margin-top: 5px;
+}
+.sidebar-foot {
+  padding: 18px 17px;
+  border-top: 1px solid #3e4648;
+  font-size: 11px;
+  color: #b7c4ca;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar-foot small {
+  margin-left: auto;
+  color: #9facb1;
+}
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8ec7af;
+}
+main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f6f8f9;
+}
+.toolbar {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  gap: 4px;
+  background: #eef1f3;
+  border-bottom: 1px solid #d3d9dc;
+  flex-shrink: 0;
+}
+.toolbar > button {
+  width: 34px;
+  flex-shrink: 0;
+}
+.toolbar form {
+  margin: 0 7px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #cdd5d9;
+  border-radius: 7px;
+  background: #fff;
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+  color: #5f717a;
+}
+.toolbar input {
+  border: 0;
+  flex: 1;
+  background: none;
+  color: #26333b;
+  font-size: 12px;
+  width: 100%;
+}
+.taskbar {
+  height: 86px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 23px;
+  border-bottom: 1px solid #d7dddf;
+  gap: 12px;
+}
+.taskbar small {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: #6d7d84;
+  text-transform: uppercase;
+}
+.taskbar h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 6px 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 42vw;
+}
+.task-actions {
+  display: flex;
+  gap: 8px;
+}
+.task-actions button {
+  border: 1px solid #c3cdd2;
+  background: white;
+  font-size: 12px;
+  padding: 0 11px;
+  white-space: nowrap;
+}
+.content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.website {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  background: #fff;
+}
+.context {
+  width: 300px;
+  flex-shrink: 0;
+  background: #f5f7f9;
+  border-left: 1px solid #d4dbdf;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+.context-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.context h2 {
+  font-size: 16px;
+  margin: 0;
+}
+.context h3 {
+  font-size: 13px;
+  font-weight: 600;
+}
+.context-heading button {
+  min-height: 28px;
+  width: 28px;
+}
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #657985;
+  margin: 30px 0 10px;
+}
+.note {
+  font-size: 13px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 0 0 22px;
+}
+.rule {
+  height: 1px;
+  background: #d6dfe4;
+  flex-shrink: 0;
+}
+.muted {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #5a6e7b;
+  margin: 0;
+}
+.attention {
+  border: 1px solid #e5ce93;
+  border-radius: 7px;
+  background: #fff8e8;
+  margin: 25px 0;
+  padding: 13px;
+}
+.attention span {
+  font-size: 12px;
+  font-weight: 600;
+  color: #74551f;
+}
+.attention p {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #756345;
+  margin: 8px 0 0;
+}
+.context-bottom {
+  margin-top: auto;
+  padding-top: 28px;
+  font-size: 10px;
+  line-height: 1.7;
+  color: #657682;
+}
+.empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  padding: 50px;
+  text-align: center;
+  color: #59756d;
+  background: radial-gradient(ellipse at 50% 40%, #f0f5f0, white 65%);
+}
+.empty h2 {
+  font-size: 26px;
+  font-weight: 500;
+  color: #344844;
+  line-height: 1.35;
+  margin: 22px 0 8px;
+}
+.empty p {
+  max-width: 360px;
+  color: #63766f;
+  line-height: 1.85;
+  font-size: 13px;
+}
+.primary {
+  background: #0d7883 !important;
+  color: white !important;
+  padding: 10px 18px;
+}
+.empty button {
+  margin-top: 16px;
+}
+.notice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff2d4;
+  color: #634b24;
+  border-bottom: 1px solid #dfcda6;
+  padding: 8px 18px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: #101b2270;
+  display: grid;
+  place-items: center;
+  z-index: 10;
+}
+.dialog {
+  background: #f9fafb;
+  border: 1px solid #c9d3d9;
+  box-shadow: 0 20px 90px #101b2240;
+  border-radius: 12px;
+  width: 460px;
+  padding: 28px;
+}
+.dialog h2 {
+  font-size: 22px;
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+.dialog p {
+  font-size: 13px;
+  color: #63747e;
+  line-height: 1.7;
+}
+.dialog label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  margin-top: 24px;
+}
+.dialog input,
+.dialog textarea {
+  border: 1px solid #aebfc7;
+  border-radius: 6px;
+  background: white;
+  padding: 12px;
+  color: #253d49;
+}
+.dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 25px;
+}
+.dialog footer button {
+  padding: 10px 16px;
+}
+@media (max-width: 1100px) {
+  .sidebar {
+    width: 230px;
+  }
+  .context {
+    width: 260px;
+    padding: 18px;
+  }
+  .taskbar {
+    padding: 16px;
+  }
+  .task-actions button {
+    padding: 0 8px;
+  }
+  .empty {
+    padding: 25px;
+  }
+  .empty h2 {
+    font-size: 22px;
+  }
+}
+dialog.dialog {
+  color: #26333b;
+}
+dialog.dialog::backdrop {
+  background: #101b2270;
+}
+dialog:not([open]) {
+  display: none;
+}
+.dialog textarea {
+  resize: vertical;
+  max-height: 220px;
+  line-height: 1.6;
+}
+.dialog small {
+  display: block;
+  font-size: 10px;
+  color: #697e89;
+  margin-top: 8px;
+}
+.findbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 16px;
+  gap: 5px;
+  border-bottom: 1px solid #d1dbe0;
+  background: #eef3f5;
+}
+.findbar input {
+  border: 1px solid #abbfc7;
+  border-radius: 4px;
+  padding: 5px 10px;
+}
+.downloads {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.downloads small {
+  display: block;
+  color: #677e88;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.taskbar > div:first-child {
+  min-width: 0;
+}
+.taskbar h1 {
+  max-width: 100%;
+}
+.task-actions {
+  flex-shrink: 0;
+}
+@media (max-width: 800px) {
+  .sidebar {
+    width: 190px;
+  }
+  .brand {
+    padding: 0 14px;
+  }
+  .brand > span {
+    display: none;
+  }
+  .task-title {
+    font-size: 12px;
+  }
+  .taskbar {
+    height: 112px;
+    display: block;
+    padding: 12px 14px;
+  }
+  .taskbar h1 {
+    font-size: 16px;
+  }
+  .task-actions {
+    margin-top: 10px;
+  }
+  .task-actions button {
+    font-size: 11px;
+    min-height: 28px;
+  }
+  .context {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    top: 168px;
+    width: calc(100% - 190px);
+    z-index: 2;
+  }
+  .findbar ~ .content .context {
+    top: 218px;
+  }
+  .toolbar {
+    padding: 8px 4px;
+    gap: 0;
+  }
+  .toolbar > button {
+    width: 27px;
+  }
+  .toolbar form {
+    margin: 0 3px;
+    padding: 0 6px;
+  }
+  .empty h2 {
+    font-size: 21px;
+  }
+  .empty {
+    padding: 20px;
+  }
+}

@@ -4,7 +4,9 @@ A browser organized around unfinished work: put a task aside, keep its context, 
 
 Trailrest is a working project name. The project starts with the user's selected "Settle & Resume" concept, option three from the browser design exploration on 21 September 2026. The name suggests somewhere to rest along a browsing trail. It is provisional, not a cleared public brand.
 
-Status: the local interaction prototype is implemented. This is a separate project from Quicktabs.
+Status: the local interaction prototype and the first Linux desktop browser are implemented. This is a separate project from Quicktabs.
+
+Run `./start-trailrest` to open the desktop browser after building or packaging it. See the [desktop setup and controls](desktop/README.md). The desktop browser opens real websites; the original webpage prototype remains available separately.
 
 - [Selected design image](design/settle-and-resume.png)
 - [Design brief](docs/design-brief.md)
@@ -16,7 +18,7 @@ Status: the local interaction prototype is implemented. This is a separate proje
 
 The prototype exercises switching tasks, pausing an unfinished form, and resuming it with context. Its success measure is how easily a person resumes work, rather than how few tabs remain open.
 
-The prototype uses React and TypeScript in Vite. The production browser engine and application framework remain open. The mockup illustrates an interaction model; it does not establish which website state can be detected or preserved.
+The prototype uses React and TypeScript in Vite. The desktop browser adds Electron and separate Chromium views for live pages. The mockup illustrates an interaction model; it does not establish which website state can be detected or preserved.
 
 ## Run locally
 
@@ -46,12 +48,12 @@ The tests exercise the agreed running-UI boundary. They cover retention, lifecyc
 
 For deterministic website examples, open the app with these query strings:
 
-| Query | Example behavior |
-| --- | --- |
-| `?save=fail-once` | First draft save fails; a retry can succeed. |
-| `?submit=fail-once` | First valid submission fails; a retry can succeed. |
-| `?delay=1500` | Website operations take 1.5 seconds, allowing edits during a save. |
-| `?status=unknown` | The shell cannot verify website state and never labels it saved. |
+| Query               | Example behavior                                                   |
+| ------------------- | ------------------------------------------------------------------ |
+| `?save=fail-once`   | First draft save fails; a retry can succeed.                       |
+| `?submit=fail-once` | First valid submission fails; a retry can succeed.                 |
+| `?delay=1500`       | Website operations take 1.5 seconds, allowing edits during a save. |
+| `?status=unknown`   | The shell cannot verify website state and never labels it saved.   |
 
 Combine queries with `&`. Prototype controls in the sidebar switch the selected task's scripted assistant between ready, stopped, and off. Recaps refer only to the visible sample sources. Keeping one requires a separate review action.
 

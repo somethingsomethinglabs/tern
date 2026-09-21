@@ -1,0 +1,36 @@
+{
+  "name": "trailrest",
+  "productName": "Trailrest",
+  "version": "0.1.0",
+  "description": "A browser for settling and resuming tasks",
+  "private": true,
+  "type": "module",
+  "main": "dist/host/main.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.host.json --noEmit",
+    "build": "npm run typecheck && tsc -p tsconfig.host.json && vite build && node scripts/copy-preload.mjs",
+    "start": "node scripts/start.mjs",
+    "dev": "npm run build && npm start",
+    "test": "playwright test",
+    "package": "npm run build && electron-packager . Trailrest --platform=linux --arch=x64 --out=release --overwrite --ignore='^/(src|host|e2e|test-results|playwright-report|release|node_modules)(/|$)'"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "@fontsource/inter": "5.3.0",
+    "@phosphor-icons/react": "2.1.10",
+    "@playwright/test": "1.63.0",
+    "@types/node": "^24.0.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.0.4",
+    "electron": "44.4.3",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "typescript": "7.0.2",
+    "vite": "6.4.3"
+  },
+  "allowScripts": {
+    "electron": true,
+    "esbuild": true
+  }
+}
