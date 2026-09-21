@@ -11,6 +11,8 @@ import {
   CaretRight,
   Globe,
   Pause,
+  PencilSimple,
+  Play,
   Check,
   SidebarSimple,
 } from "@phosphor-icons/react";
@@ -184,16 +186,66 @@ function App() {
                       "task " + (task?.id === item.id ? "selected" : "")
                     }
                   >
-                    <button
-                      aria-label={"Select task " + item.title}
-                      className="task-title"
-                      onClick={() =>
-                        void send({ type: "selectTask", id: item.id })
-                      }
-                    >
-                      <CaretRight size={15} />
-                      <span>{item.title}</span>
-                    </button>
+                    <div className="task-heading">
+                      <button
+                        aria-label={"Select task " + item.title}
+                        title={item.title}
+                        className="task-title"
+                        onClick={() =>
+                          void send({ type: "selectTask", id: item.id })
+                        }
+                      >
+                        <CaretRight size={15} />
+                        <span>{item.title}</span>
+                      </button>
+                      {task?.id === item.id && (
+                        <div
+                          className="task-actions"
+                          role="group"
+                          aria-label="Task actions"
+                        >
+                          <button
+                            aria-label="Rename task"
+                            title="Rename task"
+                            onClick={() => {
+                              setName(task.title);
+                              setModal("rename");
+                            }}
+                          >
+                            <PencilSimple size={16} />
+                          </button>
+                          {task.lifecycle === "Active" ? (
+                            <button
+                              aria-label="Put aside"
+                              title="Put aside"
+                              onClick={() => {
+                                setNote(task.note);
+                                setModal("pause");
+                              }}
+                            >
+                              <Pause size={16} />
+                            </button>
+                          ) : (
+                            <button
+                              aria-label="Resume task"
+                              title="Resume task"
+                              onClick={() => void send({ type: "resume" })}
+                            >
+                              <Play size={16} />
+                            </button>
+                          )}
+                          {task.lifecycle !== "Settled" && (
+                            <button
+                              aria-label="Settle"
+                              title="Settle"
+                              onClick={() => setModal("settle")}
+                            >
+                              <Check size={16} />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     {task?.id === item.id && (
                       <div className="pages">
                         {state.pages
@@ -356,40 +408,6 @@ function App() {
             <small>{task?.lifecycle ?? "YOUR WORKSPACE"}</small>
             <h1>{task?.title ?? "A little room to pick things up."}</h1>
           </div>
-          {task && (
-            <div className="task-actions">
-              <button
-                aria-label="Rename task"
-                onClick={() => {
-                  setName(task.title);
-                  setModal("rename");
-                }}
-              >
-                Rename
-              </button>
-              {task.lifecycle === "Active" ? (
-                <button
-                  onClick={() => {
-                    setNote(task.note);
-                    setModal("pause");
-                  }}
-                >
-                  <Pause size={16} />
-                  Put aside
-                </button>
-              ) : (
-                <button onClick={() => void send({ type: "resume" })}>
-                  Resume task
-                </button>
-              )}
-              {task.lifecycle !== "Settled" && (
-                <button onClick={() => setModal("settle")}>
-                  <Check size={16} />
-                  Settle
-                </button>
-              )}
-            </div>
-          )}
         </div>
         {(error || state?.notice || state?.storageError) && (
           <div role="alert" className="notice">

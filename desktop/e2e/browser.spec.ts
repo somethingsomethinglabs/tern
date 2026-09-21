@@ -191,6 +191,23 @@ async function launch() {
   });
   shell = await app.firstWindow();
   await shell.waitForLoadState();
+  // The desktop may tile a fresh window narrowly while another browser is open.
+  // Give UI tests a consistent viewport and explicitly open the context drawer.
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setFullScreen(true),
+  );
+  await expect
+    .poll(() => shell.evaluate(() => window.innerWidth))
+    .toBeGreaterThan(800);
+  if (
+    !(await shell
+      .getByRole("heading", { name: "Task context", exact: true })
+      .isVisible())
+  ) {
+    await shell
+      .getByRole("button", { name: "Toggle task context", exact: true })
+      .click();
+  }
 }
 test.beforeEach(async () => {
   profile = await mkdtemp(join(tmpdir(), "trailrest-test-"));
