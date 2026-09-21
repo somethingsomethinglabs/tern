@@ -418,7 +418,7 @@ span {
 .form-actions {
   display: flex;
   justify-content: space-between;
-  margin-top: 32px;
+  margin-top: 0;
   gap: 20px;
 }
 .primary,
@@ -626,11 +626,11 @@ span {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 12px;
+  gap: 10px;
   background: #fff3dd;
   border: 1px solid #ebc889;
   border-radius: 6px;
-  padding: 17px 14px;
+  padding: 16px 12px;
   color: #291d0d;
 }
 .retention-warning > svg {
@@ -643,7 +643,7 @@ span {
   font-size: 16px;
 }
 .retention-warning p {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.55;
   margin: 8px 0 0;
 }
@@ -706,10 +706,10 @@ span {
   line-height: 1.5;
 }
 .drawer-actions {
-  margin-top: 35px;
+  margin-top: 24px;
   display: flex;
   flex-direction: column;
-  gap: 19px;
+  gap: 14px;
 }
 .drawer-actions .primary {
   width: 100%;
@@ -724,7 +724,7 @@ span {
 .drawer-footer {
   border-top: 1px solid #dddfdf;
   padding-top: 22px;
-  margin-top: 33px;
+  margin-top: 26px;
   display: flex;
   gap: 12px;
   color: #6d7887;
@@ -864,7 +864,7 @@ span {
   line-height: 1.6;
 }
 .recap-review {
-  margin-top: 27px;
+  margin-top: 22px;
   font-size: 14px;
 }
 .recap-title {
@@ -883,8 +883,8 @@ span {
   padding-left: 37px;
 }
 .recap-text {
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.5;
   color: #4c596b;
   margin: 9px 0;
 }
@@ -895,7 +895,7 @@ span {
 .sources-label {
   font-size: 12px;
   color: #526374;
-  margin: 13px 0 8px;
+  margin: 10px 0 8px;
 }
 .source-links {
   display: flex;
@@ -986,30 +986,12 @@ span {
 .drawer-open .expense-site {
   min-height: calc(100dvh - 105px);
 }
-.form-actions {
-  margin-top: 0;
-}
-.retention-warning {
-  gap: 10px;
-  padding: 16px 12px;
-}
-.retention-warning p {
-  font-size: 13px;
-}
-.recap-text {
-  font-size: 14px;
-  line-height: 1.5;
-}
-.recap-review {
-  margin-top: 22px;
-}
-.sources-label {
-  margin-top: 10px;
-}
-.drawer-actions {
-  margin-top: 24px;
-  gap: 14px;
-}
-.drawer-footer {
-  margin-top: 26px;
+.group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  text-transform: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
 }

@@ -102,3 +102,31 @@ test("an unknown website state is never presented as saved", async ({
   await page.getByRole("button", { name: "Settle task" }).click();
   await expect(page.getByRole("alert")).toContainText("Check the website");
 });
+
+test("returning to an untouched baseline does not invent a website save", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByLabel("Trip purpose").fill("");
+  await page.getByLabel("Expense type").selectOption("");
+  await page
+    .getByRole("combobox", { name: "Receipt", exact: true })
+    .selectOption("");
+  await page.getByLabel("Additional details").fill("");
+  await expect(
+    page.getByRole("status").filter({ hasText: "No unsaved changes reported" }),
+  ).toBeVisible();
+  await expect(page.getByText("Draft saved", { exact: false })).toHaveCount(0);
+});
+
+test("unknown state still warns before a reload can discard the form", async ({
+  page,
+}) => {
+  await page.goto("/?status=unknown");
+  await page.getByLabel("Trip purpose").fill("Keep unknown-state edits");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "Reload sample page" }).click();
+  await expect(page.getByLabel("Trip purpose")).toHaveValue(
+    "Keep unknown-state edits",
+  );
+});

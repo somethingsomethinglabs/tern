@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   NotePencil,
   ArrowClockwise,
@@ -34,6 +34,8 @@ import {
 } from "./model";
 
 export function App() {
+  const resumeButton = useRef<HTMLButtonElement>(null);
+  const [settledOpen, setSettledOpen] = useState(false);
   const [formGeneration, setFormGeneration] = useState(0);
   const [settleError, setSettleError] = useState("");
   const [drawerMode, setDrawerMode] = useState<"pause" | "note">("pause");
@@ -43,6 +45,7 @@ export function App() {
   const [selected, setSelected] = useState<TaskId>("claim");
   const [expanded, setExpanded] = useState<TaskId[]>(["claim"]);
   const [report, setReport] = useState<PageReport>({
+    knowledge: "known",
     dirty: true,
     pending: false,
     canSettle: false,
@@ -75,7 +78,7 @@ export function App() {
   function reloadSample() {
     if (active.selectedPage !== "form") return;
     if (
-      (report.dirty || report.pending) &&
+      !report.canSettle &&
       !window.confirm(
         "Reload the sample form? Current edits will be lost. Keeping a page open has not saved the form.",
       )
@@ -117,13 +120,14 @@ export function App() {
   function settle() {
     if (selected === "claim" && !report.canSettle) {
       setSettleError(
-        report.label.startsWith("Page state unknown")
+        report.knowledge === "unknown"
           ? "Check the website before settling. Trailrest cannot verify whether this page is saved."
           : "Finish and save on the website before settling this task. Expense form needs attention.",
       );
       return;
     }
     setSettleError("");
+    setSettledOpen(true);
     setTasks((current) =>
       current.map((task) =>
         task.id === selected ? { ...task, lifecycle: "Settled" } : task,
@@ -172,13 +176,33 @@ export function App() {
               aria-label={`${group} tasks`}
             >
               <h2>
-                {group}
+                {group === "Settled" ? (
+                  <button
+                    className="group-toggle"
+                    aria-label="Toggle Settled tasks"
+                    aria-expanded={settledOpen}
+                    onClick={() => setSettledOpen((value) => !value)}
+                  >
+                    Settled{" "}
+                    {settledOpen ? (
+                      <CaretDown size={14} />
+                    ) : (
+                      <CaretRight size={14} />
+                    )}
+                  </button>
+                ) : (
+                  group
+                )}
                 <span>
                   {tasks.filter((task) => task.lifecycle === group).length}
                 </span>
               </h2>
               {tasks
-                .filter((task) => task.lifecycle === group)
+                .filter(
+                  (task) =>
+                    task.lifecycle === group &&
+                    (group !== "Settled" || settledOpen),
+                )
                 .map((task) => (
                   <div
                     key={task.id}
@@ -217,6 +241,7 @@ export function App() {
                       </button>
                       <button
                         className="expand-button"
+                        aria-expanded={expanded.includes(task.id)}
                         aria-label={`${expanded.includes(task.id) ? "Collapse" : "Expand"} ${task.title}`}
                         onClick={() =>
                           setExpanded((current) =>
@@ -434,7 +459,7 @@ export function App() {
             <p className="context-hint">
               Your pages are still open. Retained for this session.
             </p>
-            <button className="primary" onClick={resume}>
+            <button ref={resumeButton} className="primary" onClick={resume}>
               {active.lifecycle === "Later" ? "Resume task" : "Reopen task"}
             </button>
             {active.selectedPage !== "form" && (
@@ -461,6 +486,7 @@ export function App() {
       </div>
       {drawerOpen && (
         <PauseDrawer
+          fallbackFocus={resumeButton}
           mode={drawerMode}
           task={active}
           needsAttention={selected === "claim" && report.dirty}

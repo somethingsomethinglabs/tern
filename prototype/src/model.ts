@@ -59,6 +59,7 @@ export const pages: Record<PageId, { title: string; address: string }> = {
   },
 };
 export interface PageReport {
+  knowledge: "known" | "unknown";
   dirty: boolean;
   pending: boolean;
   canSettle: boolean;

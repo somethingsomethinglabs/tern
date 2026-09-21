@@ -175,3 +175,14 @@ test("a next step can be edited without pausing the task", async ({ page }) => {
     "Check the policy exception.",
   );
 });
+
+test("pausing the final active task focuses its Resume action", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Put aside", exact: true }).click();
+  await page.getByRole("button", { name: "Keep page open & pause" }).click();
+  await page.getByRole("button", { name: "Put aside", exact: true }).click();
+  await page.getByRole("button", { name: "Pause task", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Resume task" })).toBeFocused();
+});

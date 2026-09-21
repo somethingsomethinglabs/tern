@@ -9,6 +9,8 @@ Status: the local interaction prototype is implemented. This is a separate proje
 - [Selected design image](design/settle-and-resume.png)
 - [Design brief](docs/design-brief.md)
 - [Settle and resume specification](docs/settle-and-resume-spec.md)
+- [Design QA and screenshots](design-qa.md)
+- [Implementation review](docs/implementation-review.md)
 - [Browser research](docs/browser-rethinking-research.md)
 - [Historical and academic research](docs/browser-history-research.md)
 

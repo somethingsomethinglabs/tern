@@ -15,6 +15,7 @@ export function ExpenseSite({
     receipt: "train-receipt.pdf",
     details: "Return travel for the client workshop.",
   });
+  const [savedOnce, setSavedOnce] = useState(false);
   const [baseline, setBaseline] = useState({
     purpose: "",
     expense: "",
@@ -53,10 +54,13 @@ export function ExpenseSite({
           ? "Unsaved changes"
           : submitted
             ? "Sample claim submitted"
-            : "Draft saved for this session";
+            : savedOnce
+              ? "Draft saved for this session"
+              : "No unsaved changes reported";
   const pending = saving || submitting;
   useEffect(() => {
     onReport({
+      knowledge: unknown ? "unknown" : "known",
       dirty: !unknown && dirty,
       pending,
       label: unknown ? "Page state unknown · Check the website" : label,
@@ -86,6 +90,7 @@ export function ExpenseSite({
         );
       } else {
         setBaseline(snapshot);
+        setSavedOnce(true);
       }
       setSaving(false);
     }, delay);
@@ -109,6 +114,7 @@ export function ExpenseSite({
         );
       } else {
         setBaseline(snapshot);
+        setSavedOnce(true);
         setSubmitted(true);
       }
       setSubmitting(false);

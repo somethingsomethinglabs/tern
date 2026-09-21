@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import {
   Briefcase,
   FileText,
@@ -11,6 +11,7 @@ import type { Task } from "./model";
 
 export function PauseDrawer({
   task,
+  fallbackFocus,
   needsAttention,
   onCancel,
   onPause,
@@ -18,6 +19,7 @@ export function PauseDrawer({
   mode = "pause",
 }: {
   task: Task;
+  fallbackFocus: RefObject<HTMLButtonElement | null>;
   needsAttention: boolean;
   onCancel: () => void;
   onPause: (note: string) => void;
@@ -32,9 +34,18 @@ export function PauseDrawer({
     element.showModal();
     return () => {
       element.close();
-      trigger.current?.focus();
+      queueMicrotask(() => {
+        const target = trigger.current;
+        if (
+          target?.isConnected &&
+          !target.matches(":disabled") &&
+          target.getClientRects().length
+        )
+          target.focus();
+        else fallbackFocus.current?.focus();
+      });
     };
-  }, []);
+  }, [fallbackFocus]);
   return (
     <dialog
       ref={dialog}
