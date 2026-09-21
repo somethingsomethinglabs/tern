@@ -13,8 +13,16 @@ import {
   type Session,
 } from "electron";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { dirname, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
+import { rm, writeFile } from "node:fs/promises";
+import { BrowserPreferences } from "./preferences.js";
+import {
+  chromeStorePackage,
+  prepareExtensionPackage,
+  PACKAGE_LIMIT,
+} from "./extension-packages.js";
 import type {
   Command,
   PageBounds,
@@ -38,6 +46,10 @@ protocol.registerSchemesAsPrivileged([
 app.enableSandbox();
 const directory = dirname(fileURLToPath(import.meta.url));
 const storage = new WorkspaceFile(app.getPath("userData"));
+const preferences = new BrowserPreferences(
+  app.getPath("userData"),
+  app.getPath("downloads"),
+);
 const workspace: Workspace = {
   version: 1,
   tasks: [],
@@ -54,6 +66,7 @@ let theme = readTheme();
 let notice = "";
 let quitting = false;
 const downloads: Snapshot["downloads"] = [];
+const downloadDestinations = new Set<string>();
 let pageBounds: PageBounds = {
   x: 280,
   y: 56,
@@ -77,10 +90,11 @@ function currentContents() {
 function snapshot(): Snapshot {
   return {
     ...workspace,
+    preferences: preferences.value,
     theme,
     extensions: extensions?.list() ?? [],
     notice,
-    storageError: storage.error,
+    storageError: storage.error || preferences.error,
     downloads,
     pages: workspace.pages.map((page) => {
       const contents = views.get(page.id)?.webContents;
@@ -143,7 +157,13 @@ function addressURL(address: string) {
     const url = "https://" + value;
     if (isWebURL(url)) return new URL(url).href;
   }
-  return "https://duckduckgo.com/?q=" + encodeURIComponent(value);
+  const engines = {
+    duckduckgo: "https://duckduckgo.com/?q=",
+    google: "https://www.google.com/search?q=",
+    bing: "https://www.bing.com/search?q=",
+    brave: "https://search.brave.com/search?q=",
+  };
+  return engines[preferences.value.searchEngine] + encodeURIComponent(value);
 }
 function newPage(taskId: string, url = "") {
   const page: PageRecord = {
@@ -160,6 +180,7 @@ function newPage(taskId: string, url = "") {
 function guestPreferences(): Electron.WebPreferences {
   return {
     session: guests,
+    preload: resolve(directory, "page-preload.cjs"),
     nodeIntegration: false,
     contextIsolation: true,
     sandbox: true,
@@ -183,6 +204,10 @@ function showPage(
   views.set(page.id, view);
   window.contentView.addChildView(view);
   const contents = view.webContents;
+  contents.setZoomFactor(preferences.value.defaultZoom);
+  contents.on("did-finish-load", () =>
+    contents.setZoomFactor(preferences.value.defaultZoom),
+  );
   const update = () => {
     if (contents.isDestroyed()) return;
     const url = contents.getURL();
@@ -359,6 +384,142 @@ async function command(raw: unknown) {
     return input;
   };
   switch (value.type) {
+    case "saveNote": {
+      const task = workspace.tasks.find(
+        (task) => task.id === text(value.id, 100),
+      );
+      if (!task) throw new Error("Task not found.");
+      task.note = text(value.note, 500);
+      break;
+    }
+    case "setPreferences": {
+      if (
+        !value.patch ||
+        typeof value.patch !== "object" ||
+        "downloadDirectory" in value.patch
+      )
+        throw new Error("Invalid browser settings.");
+      preferences.update(value.patch);
+      for (const view of views.values())
+        if (!view.webContents.isDestroyed())
+          view.webContents.setZoomFactor(preferences.value.defaultZoom);
+      break;
+    }
+    case "chooseDownloadDirectory": {
+      const result = await dialog.showOpenDialog(window, {
+        title: "Download folder",
+        properties: ["openDirectory", "createDirectory"],
+        defaultPath: preferences.value.downloadDirectory,
+      });
+      if (!result.canceled && result.filePaths[0])
+        preferences.update({ downloadDirectory: result.filePaths[0] });
+      break;
+    }
+    case "clearCache":
+      if (
+        confirm(
+          "Clear cached website files?",
+          "Websites may load more slowly next time. Cookies, logins, task notes and page addresses are kept.",
+          "Clear cache",
+        )
+      ) {
+        await guests.clearCache();
+        notice = "Cached website files cleared.";
+      }
+      break;
+    case "importExtension": {
+      const result = await dialog.showOpenDialog(window, {
+        title: "Import extension package",
+        properties: ["openFile"],
+        filters: [{ name: "Extension packages", extensions: ["zip", "crx"] }],
+      });
+      if (result.canceled || !result.filePaths[0]) break;
+      const extension = await prepareExtensionPackage(
+        result.filePaths[0],
+        app.getPath("userData"),
+      );
+      try {
+        const response = await dialog.showMessageBox(window, {
+          type: "question",
+          message: "Load " + extension.name + "?",
+          detail: `Version ${extension.version}\nPermissions: ${extension.permissions}\n\nThis imports unpacked code. Trailrest does not verify the package's publisher signature. Extensions can read and change websites; some Chrome APIs and toolbar popups are unsupported.`,
+          buttons: ["Cancel", "Load extension"],
+          defaultId: 0,
+          cancelId: 0,
+        });
+        if (response.response !== 1) {
+          await rm(extension.directory, { recursive: true, force: true });
+          break;
+        }
+        await extensions.add(extension.path);
+      } catch (error) {
+        await rm(extension.directory, { recursive: true, force: true });
+        throw error;
+      }
+      break;
+    }
+    case "downloadExtension": {
+      notice = "";
+      publish();
+      const source = chromeStorePackage(
+        text(value.source, 2048),
+        process.versions.chrome,
+      );
+      const result = await dialog.showSaveDialog(window, {
+        title: "Download extension package",
+        defaultPath: join(
+          preferences.value.downloadDirectory,
+          source.id + ".crx",
+        ),
+        filters: [{ name: "Chrome extension", extensions: ["crx"] }],
+      });
+      if (result.canceled || !result.filePath) break;
+      const download = {
+        id: randomUUID(),
+        name: source.id + ".crx",
+        status: "Downloading extension package",
+      };
+      downloads.unshift(download);
+      downloads.splice(20);
+      publish();
+      try {
+        const response = await net.fetch(source.url, {
+          credentials: "omit",
+          signal: AbortSignal.timeout(30000),
+        });
+        if (!response.ok || !response.body)
+          throw new Error(
+            "The Chrome Web Store did not provide a downloadable package. Use a package from the extension developer instead.",
+          );
+        const chunks: Buffer[] = [];
+        const reader = response.body.getReader();
+        let size = 0;
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          size += chunk.value.byteLength;
+          if (size > PACKAGE_LIMIT) {
+            await reader.cancel();
+            throw new Error("Extension package exceeds 64 MB.");
+          }
+          chunks.push(Buffer.from(chunk.value));
+        }
+        const data = Buffer.concat(chunks);
+        if (data.subarray(0, 4).toString() !== "Cr24")
+          throw new Error(
+            "The store did not return a Chrome extension package.",
+          );
+        await writeFile(result.filePath, data, { mode: 0o600 });
+        download.status = "Completed";
+        notice =
+          "Extension package downloaded. Use Import package to review and load it.";
+      } catch (error) {
+        download.status = "Failed";
+        publish();
+        throw error;
+      }
+      break;
+    }
     case "loadExtension": {
       const result = await dialog.showOpenDialog(window, {
         title: "Load unpacked extension",
@@ -543,6 +704,7 @@ async function start() {
     return;
   }
   Object.assign(workspace, storage.read());
+  preferences.read();
   app.on("second-instance", () => {
     if (window) {
       if (window.isMinimized()) window.restore();
@@ -580,6 +742,7 @@ async function start() {
       publish();
     });
     item.on("done", (_event, state) => {
+      downloadDestinations.delete(item.getSavePath());
       download.status =
         state === "completed"
           ? "Completed"
@@ -588,13 +751,29 @@ async function start() {
             : "Interrupted";
       publish();
     });
-    const destination = dialog.showSaveDialogSync(window, {
-      title: "Save download",
-      buttonLabel: "Save file",
-      defaultPath: item.getFilename(),
-    });
-    if (destination) item.setSavePath(destination);
-    else item.cancel();
+    const filename = basename(item.getFilename());
+    let destination = join(preferences.value.downloadDirectory, filename);
+    if (preferences.value.askDownloadLocation) {
+      destination =
+        dialog.showSaveDialogSync(window, {
+          title: "Save download",
+          buttonLabel: "Save file",
+          defaultPath: destination,
+        }) || "";
+    } else {
+      const extension = extname(filename);
+      const name = filename.slice(0, filename.length - extension.length);
+      let index = 1;
+      while (existsSync(destination) || downloadDestinations.has(destination))
+        destination = join(
+          preferences.value.downloadDirectory,
+          `${name} (${index++})${extension}`,
+        );
+    }
+    if (destination) {
+      downloadDestinations.add(destination);
+      item.setSavePath(destination);
+    } else item.cancel();
   });
   const shellSession = session.fromPartition("trailrest-shell");
   const uiRoot = resolve(directory, "../ui");
@@ -644,6 +823,15 @@ async function start() {
   ipcMain.handle("workspace:command", (event, value) => {
     trusted(event);
     return command(value);
+  });
+  ipcMain.on("guest:scroll", (event, direction) => {
+    if (direction !== "up" && direction !== "down") return;
+    if (
+      event.sender !== currentContents() ||
+      event.senderFrame !== event.sender.mainFrame
+    )
+      return;
+    window.webContents.send("shell:shortcut", "scroll:" + direction);
   });
   ipcMain.on("page:layout", (event, bounds: PageBounds) => {
     trusted(event);

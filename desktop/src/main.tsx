@@ -17,9 +17,15 @@ import {
   SidebarSimple,
   GearSix,
   PuzzlePiece,
+  NotePencil,
+  DownloadSimple,
+  CaretDown,
 } from "@phosphor-icons/react";
 import type { Bridge, Command, Snapshot, Lifecycle } from "../host/contracts";
 import "./styles.css";
+import { SettingsPage } from "./SettingsPage";
+import { TaskNotes } from "./TaskNotes";
+import { ExtensionsPanel } from "./ExtensionsPanel";
 declare global {
   interface Window {
     trailrest: Bridge;
@@ -31,14 +37,15 @@ function App() {
   const [address, setAddress] = useState("");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState<
-    "create" | "pause" | "settle" | "rename" | "settings" | "extensions" | null
+    "create" | "pause" | "settle" | "rename" | "downloads" | "extensions" | null
   >(null);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState("");
   const [drawer, setDrawer] = useState(false);
-  const [compact, setCompact] = useState(window.innerWidth <= 800);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [toolbarHidden, setToolbarHidden] = useState(false);
   const [groups, setGroups] = useState({ Later: false, Settled: false });
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<Lifecycle | null>(null);
@@ -63,7 +70,6 @@ function App() {
     setDragging(null);
     setDropTarget(null);
   };
-  const [extensionBusy, setExtensionBusy] = useState(false);
   const [finding, setFinding] = useState(false);
   const [findText, setFindText] = useState("");
   const findInput = useRef<HTMLInputElement>(null);
@@ -71,12 +77,31 @@ function App() {
   const addressInput = useRef<HTMLInputElement>(null);
   const task = state?.tasks.find((task) => task.id === state.selectedTaskId);
   const page = state?.pages.find((page) => page.id === task?.selectedPageId);
-  const pageCount =
-    state?.pages.filter((page) => page.taskId === task?.id).length ?? 0;
+  const sidebarCollapsed = !!state?.preferences.sidebarCollapsed && !hints;
+  const hideToolbar =
+    toolbarHidden &&
+    !!state?.preferences.autoHideToolbar &&
+    !settingsOpen &&
+    !modal &&
+    !finding;
+  const showAddress = () => {
+    setToolbarHidden(false);
+    setSettingsOpen(false);
+    requestAnimationFrame(() => {
+      addressInput.current?.focus();
+      addressInput.current?.select();
+    });
+  };
   const send = async (command: Command) => {
     try {
       setError("");
       await window.trailrest.command(command);
+      if (
+        ["selectTask", "selectPage", "createTask", "newPage"].includes(
+          command.type,
+        )
+      )
+        setSettingsOpen(false);
       return true;
     } catch (error) {
       setError(String(error).replace(/^Error:.*?: /, ""));
@@ -95,12 +120,8 @@ function App() {
   }, [state?.theme]);
   useLayoutEffect(() => {
     setAddress(page?.url ?? "");
+    setToolbarHidden(false);
   }, [page?.id, page?.url]);
-  useEffect(() => {
-    const resize = () => setCompact(window.innerWidth <= 800);
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
   useEffect(() => {
     const measure = () => {
       const rect = site.current?.getBoundingClientRect();
@@ -112,7 +133,8 @@ function App() {
           height: rect.height,
           visible:
             !modal &&
-            !(compact && drawer) &&
+            !settingsOpen &&
+            !(window.innerWidth <= 800 && drawer) &&
             !!page?.live &&
             !page.error &&
             rect.width > 0,
@@ -122,7 +144,17 @@ function App() {
     if (site.current) observer.observe(site.current);
     measure();
     return () => observer.disconnect();
-  }, [modal, drawer, compact, page?.id, page?.live, page?.error, state]);
+  }, [
+    modal,
+    settingsOpen,
+    hideToolbar,
+    sidebarCollapsed,
+    drawer,
+    page?.id,
+    page?.live,
+    page?.error,
+    state,
+  ]);
   useEffect(() => {
     if (modal) dialogRef.current?.showModal();
     else dialogRef.current?.close();
@@ -138,7 +170,17 @@ function App() {
           return;
         }
         if (modal) return;
+        if (key.startsWith("scroll:")) {
+          if (
+            !settingsOpen &&
+            !finding &&
+            document.activeElement !== addressInput.current
+          )
+            setToolbarHidden(key === "scroll:down");
+          return;
+        }
         if (key.startsWith("switch:") && state) {
+          setSettingsOpen(false);
           const shortcut = key.slice(7);
           const index = shortcut.charCodeAt(0) - 97;
           if (index >= 0 && index < 26) {
@@ -162,27 +204,28 @@ function App() {
           return;
         }
         if (key === "l") {
-          addressInput.current?.focus();
-          addressInput.current?.select();
+          showAddress();
         }
         if (key === "f") {
           setFinding(true);
           findInput.current?.focus();
         }
-        if (key === "t")
+        if (key === "t") {
+          setSettingsOpen(false);
+          setToolbarHidden(false);
           void send({ type: "newPage" }).then(() =>
             addressInput.current?.focus(),
           );
+        }
       }),
-    [state, modal],
+    [state, modal, settingsOpen, finding],
   );
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
       if (event.key === "Escape") cancelDrag();
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
         event.preventDefault();
-        addressInput.current?.focus();
-        addressInput.current?.select();
+        showAddress();
       }
     };
     window.addEventListener("keydown", key);
@@ -194,8 +237,24 @@ function App() {
   }, []);
   return (
     <div className={"app " + (dragging ? "dragging-task" : "")}>
-      <aside className="sidebar">
+      <aside className={"sidebar " + (sidebarCollapsed ? "collapsed" : "")}>
         <div className="brand">
+          <button
+            aria-label={
+              sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"
+            }
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            onClick={() =>
+              void send({
+                type: "setPreferences",
+                patch: {
+                  sidebarCollapsed: !state?.preferences.sidebarCollapsed,
+                },
+              })
+            }
+          >
+            <SidebarSimple size={21} />
+          </button>
           <Leaf size={25} weight="duotone" />
           <strong>Trailrest</strong>
         </div>
@@ -468,15 +527,31 @@ function App() {
           )}
           <button
             className="settings-button"
-            onClick={() => setModal("settings")}
+            title="Settings"
+            onClick={() => {
+              setSettingsOpen(true);
+              setToolbarHidden(false);
+            }}
           >
             <GearSix size={19} />
-            Settings
+            <span>Settings</span>
           </button>
         </div>
       </aside>
       <main>
-        <div className="toolbar">
+        {hideToolbar && (
+          <button
+            className="toolbar-reveal"
+            aria-label="Show address bar"
+            title="Show address bar (Ctrl+L)"
+            onMouseEnter={() => setToolbarHidden(false)}
+            onFocus={() => setToolbarHidden(false)}
+            onClick={showAddress}
+          >
+            <CaretDown size={12} />
+          </button>
+        )}
+        <div className="toolbar" hidden={hideToolbar}>
           <button
             aria-label="Back"
             disabled={!page?.canGoBack}
@@ -503,7 +578,9 @@ function App() {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              void send({ type: "navigate", address });
+              void send({ type: "navigate", address }).then((ok) => {
+                if (ok) addressInput.current?.blur();
+              });
             }}
           >
             <Globe size={16} />
@@ -512,7 +589,7 @@ function App() {
               aria-label="Address or search"
               placeholder={
                 task
-                  ? "Enter an address or search DuckDuckGo"
+                  ? "Enter an address or search"
                   : "Create a task to start browsing"
               }
               disabled={!task}
@@ -529,10 +606,17 @@ function App() {
             <X size={17} />
           </button>
           <button
-            aria-label="Toggle task context"
+            aria-label="Toggle task notes"
             onClick={() => setDrawer(!drawer)}
           >
-            <SidebarSimple size={21} />
+            <NotePencil size={21} />
+          </button>
+          <button
+            aria-label="Downloads"
+            title="Downloads"
+            onClick={() => setModal("downloads")}
+          >
+            <DownloadSimple size={21} />
           </button>
           <button
             aria-label="Extensions"
@@ -604,7 +688,14 @@ function App() {
             </button>
           </div>
         )}
-        <div className="content">
+        {settingsOpen && state && (
+          <SettingsPage
+            state={state}
+            send={send}
+            close={() => setSettingsOpen(false)}
+          />
+        )}
+        <div className="content" hidden={settingsOpen}>
           <div ref={site} className="website">
             {!page?.live && !page?.error && (
               <div className="empty">
@@ -654,75 +745,12 @@ function App() {
               </div>
             )}
           </div>
-          {drawer && (
-            <aside className="context">
-              <div className="context-heading">
-                <h2>Task context</h2>
-                <button
-                  aria-label="Close task context"
-                  onClick={() => setDrawer(false)}
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <p className="muted context-description">
-                Your own reminder for this task. Trailrest does not read or
-                summarize its websites.
-              </p>
-              {task && (
-                <label className="task-status">
-                  Move task to
-                  <select
-                    aria-label="Task status"
-                    value={task.lifecycle}
-                    onChange={(event) =>
-                      void send({
-                        type: "moveTask",
-                        id: task.id,
-                        lifecycle: event.target.value as Lifecycle,
-                      })
-                    }
-                  >
-                    <option>Active</option>
-                    <option>Later</option>
-                    <option>Settled</option>
-                  </select>
-                </label>
-              )}
-              <p className="eyebrow">WHERE I LEFT OFF</p>
-              <p className="note">
-                {task?.note || "Leave a note when you put this task aside."}
-              </p>
-              <div className="rule" />
-              <h3>
-                {pageCount} {pageCount === 1 ? "page" : "pages"} in this task
-              </h3>
-              <p className="muted">
-                Live pages keep their state while Trailrest is running.
-              </p>
-              <div className="attention">
-                <span>Website state is unknown</span>
-                <p>
-                  Putting a task aside does not save or submit anything on a
-                  website.
-                </p>
-              </div>
-              {state?.downloads.length ? (
-                <section className="downloads">
-                  <h3>Downloads</h3>
-                  {state.downloads.map((download) => (
-                    <p key={download.id}>
-                      {download.name}
-                      <small>{download.status}</small>
-                    </p>
-                  ))}
-                </section>
-              ) : null}
-              <div className="context-bottom">
-                Your tasks and notes stay on this device.
-              </div>
-            </aside>
-          )}
+          <TaskNotes
+            task={task}
+            open={drawer}
+            send={send}
+            close={() => setDrawer(false)}
+          />
         </div>
       </main>
       <dialog
@@ -734,100 +762,29 @@ function App() {
       >
         {error && modal && <p role="alert">{error}</p>}
         {modal === "extensions" ? (
+          <ExtensionsPanel
+            extensions={state?.extensions ?? []}
+            notice={state?.notice ?? ""}
+            send={send}
+            close={() => setModal(null)}
+          />
+        ) : modal === "downloads" ? (
           <section>
-            <h2 id="dialog-title">Extensions</h2>
-            <p>
-              Load an unpacked Chrome extension from a folder. This build
-              supports only some extension APIs; Chrome Web Store installation
-              and extension toolbar popups are unavailable.
-            </p>
-            <p>
-              Only load extensions you trust. They can read and change websites
-              you visit.
-            </p>
-            <div className="extension-list">
-              {state?.extensions.length ? (
-                state.extensions.map((extension) => (
-                  <div className="extension" key={extension.path}>
-                    <strong>{extension.name}</strong>
-                    <small>{extension.version}</small>
-                    <p className="extension-path">{extension.path}</p>
-                    {extension.error && <p role="alert">{extension.error}</p>}
-                    <button
-                      disabled={extensionBusy}
-                      onClick={async () => {
-                        setExtensionBusy(true);
-                        await send({
-                          type: "removeExtension",
-                          path: extension.path,
-                        });
-                        setExtensionBusy(false);
-                      }}
-                    >
-                      Remove {extension.name}
-                    </button>
+            <h2 id="dialog-title">Downloads</h2>
+            {state?.downloads.length ? (
+              <div className="downloads-list">
+                {state.downloads.map((download) => (
+                  <div key={download.id}>
+                    <strong>{download.name}</strong>
+                    <p>{download.status}</p>
                   </div>
-                ))
-              ) : (
-                <p>No extensions loaded.</p>
-              )}
-            </div>
-            <p>
-              After loading or removing an extension, reload a website to apply
-              the change. Loaded extensions are remembered when you reopen
-              Trailrest.
-            </p>
+                ))}
+              </div>
+            ) : (
+              <p>No downloads in this session.</p>
+            )}
             <footer>
-              <button disabled={extensionBusy} onClick={() => setModal(null)}>
-                Done
-              </button>
-              <button
-                className="primary"
-                disabled={extensionBusy}
-                onClick={async () => {
-                  setExtensionBusy(true);
-                  await send({ type: "loadExtension" });
-                  setExtensionBusy(false);
-                }}
-              >
-                {extensionBusy ? "Loading…" : "Load unpacked"}
-              </button>
-            </footer>
-          </section>
-        ) : modal === "settings" ? (
-          <section>
-            <h2 id="dialog-title">Trailrest settings</h2>
-            <p>
-              Theme: {state?.theme.name ?? "System dark"}. Follows your Omarchy
-              theme automatically. The address bar stays dark.
-            </p>
-            <h3>Keyboard shortcuts</h3>
-            <p>
-              Hold Alt to see hints. Alt+A–Z selects tasks in creation order.
-              Alt+1–9 selects tabs in the current task; Alt+0 selects its tenth
-              tab. Open Later or Settled to see their hints. Selecting a task by
-              shortcut also opens its group.
-            </p>
-            <p>
-              Ctrl+L: address · Ctrl+T: new tab · Ctrl+W: close tab · Ctrl+F:
-              find · Alt+←/→: history
-            </p>
-            <label className="settings-option">
-              <input
-                type="checkbox"
-                checked={drawer}
-                onChange={(event) => setDrawer(event.target.checked)}
-              />
-              Show task context panel
-            </label>
-            <p>
-              Show your resumption note and page information alongside the
-              current website.
-            </p>
-            <footer>
-              <button className="primary" onClick={() => setModal(null)}>
-                Done
-              </button>
+              <button onClick={() => setModal(null)}>Done</button>
             </footer>
           </section>
         ) : (
@@ -868,13 +825,18 @@ function App() {
                   <textarea
                     autoFocus
                     rows={5}
-                    maxLength={500}
                     value={note}
                     onChange={(event) => setNote(event.target.value)}
                     placeholder="What is the next small step?"
                   />
                 </label>
                 <small>{note.length}/500 · Optional</small>
+                {note.length > 500 && (
+                  <p role="alert">
+                    Shorten the note to 500 characters. Your text is kept until
+                    you edit or cancel.
+                  </p>
+                )}
               </>
             ) : (
               modal !== "settle" && (
@@ -896,7 +858,9 @@ function App() {
               <button
                 className="primary"
                 disabled={
-                  (modal === "create" || modal === "rename") && !name.trim()
+                  ((modal === "create" || modal === "rename") &&
+                    !name.trim()) ||
+                  (modal === "pause" && note.length > 500)
                 }
               >
                 {modal === "pause"

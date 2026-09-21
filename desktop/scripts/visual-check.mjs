@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 const server = createServer((_request, response) => {
   response.setHeader("Content-Type", "text/html");
   response.end(
-    `<!doctype html><title>Travel expenses</title><style>body{margin:0;background:#faf9f5;color:#263c38;font:16px Georgia,serif}header{padding:24px 36px;border-bottom:1px solid #ddd9d0;font-size:18px}main{padding:40px;max-width:650px}small{font:12px Arial;letter-spacing:2px;color:#768c80}h1{font-weight:400;font-size:34px}p{line-height:1.7;color:#68796f}label{display:block;margin:30px 0;font:14px Arial}input,textarea{display:block;margin-top:10px;width:90%;padding:13px;border:1px solid #b7c5bb;border-radius:5px;background:white;font:16px Arial}button{padding:12px 22px;background:#386851;border:0;border-radius:4px;color:white}aside{padding:15px;background:#edf2e7;font:12px Arial;color:#556c5a}</style><header>Fieldwork / Expenses</header><main><small>CONTROLLED SAMPLE WEBSITE</small><h1>Your travel claim</h1><p>Add the details from your recent trip. This form is a local test page inside the real browser.</p><label>Amount<input aria-label="Amount" value="318.20"/></label><label>Claim details<textarea aria-label="Claim details" rows="4">Train and taxi to the workshop. Check the receipt before submitting.</textarea></label><button>Save draft</button><p><aside>No real claim is submitted by this sample website.</aside></p></main>`,
+    `<!doctype html><title>Travel expenses</title><style>body{margin:0;min-height:1800px;background:#faf9f5;color:#263c38;font:16px Georgia,serif}header{padding:24px 36px;border-bottom:1px solid #ddd9d0;font-size:18px}main{padding:40px;max-width:650px}small{font:12px Arial;letter-spacing:2px;color:#768c80}h1{font-weight:400;font-size:34px}p{line-height:1.7;color:#68796f}label{display:block;margin:30px 0;font:14px Arial}input,textarea{display:block;margin-top:10px;width:90%;padding:13px;border:1px solid #b7c5bb;border-radius:5px;background:white;font:16px Arial}button{padding:12px 22px;background:#386851;border:0;border-radius:4px;color:white}aside{padding:15px;background:#edf2e7;font:12px Arial;color:#556c5a}</style><header>Fieldwork / Expenses</header><main><small>CONTROLLED SAMPLE WEBSITE</small><h1>Your travel claim</h1><p>Add the details from your recent trip. This form is a local test page inside the real browser.</p><label>Amount<input aria-label="Amount" value="318.20"/></label><label>Claim details<textarea aria-label="Claim details" rows="4">Train and taxi to the workshop. Check the receipt before submitting.</textarea></label><button>Save draft</button><p><aside>No real claim is submitted by this sample website.</aside></p></main>`,
   );
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -25,6 +25,9 @@ const app = await electron.launch({
 });
 try {
   const shell = await app.firstWindow();
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setFullScreen(true),
+  );
   await shell.getByRole("button", { name: "New task", exact: true }).click();
   await shell
     .getByLabel("Task name", { exact: true })
@@ -61,6 +64,36 @@ try {
     ]);
   }
   await capture("desktop-native-page.png");
+  const website = app
+    .context()
+    .pages()
+    .find((page) => page.url().startsWith("http://127.0.0.1:"));
+  await website.getByLabel("Claim details").click();
+  await website.mouse.wheel(0, 150);
+  await shell.getByRole("button", { name: "Show address bar" }).waitFor();
+  await capture("desktop-toolbar-collapsed.png");
+  await app.evaluate(({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0].webContents;
+    contents.focus();
+    contents.sendInputEvent({
+      type: "keyDown",
+      keyCode: "L",
+      modifiers: ["control"],
+    });
+    contents.sendInputEvent({
+      type: "keyUp",
+      keyCode: "L",
+      modifiers: ["control"],
+    });
+  });
+  await shell
+    .getByRole("button", { name: "Collapse sidebar", exact: true })
+    .click();
+  await capture("desktop-sidebar-collapsed.png");
+  await shell
+    .getByRole("button", { name: "Expand sidebar", exact: true })
+    .click();
+
   await shell.getByRole("button", { name: "Put aside", exact: true }).click();
   await shell
     .getByLabel("Where I left off")
@@ -72,11 +105,12 @@ try {
   await capture("desktop-native-later.png");
   await shell.getByRole("button", { name: "Later tasks", exact: true }).click();
   await shell
-    .getByRole("button", { name: "Toggle task context", exact: true })
+    .getByRole("button", { name: "Toggle task notes", exact: true })
     .click();
-  await capture("desktop-native-context.png");
+  await capture("desktop-native-notes.png");
+  await shell.screenshot({ path: "../design/qa/desktop-notes-shell.png" });
   await shell
-    .getByRole("button", { name: "Close task context", exact: true })
+    .getByRole("button", { name: "Close task notes", exact: true })
     .click();
   await app.evaluate(({ BrowserWindow }) => {
     const contents = BrowserWindow.getAllWindows()[0].webContents;
@@ -96,7 +130,10 @@ try {
   });
   await shell.getByRole("button", { name: "Settings", exact: true }).click();
   await capture("desktop-settings.png");
-  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  await shell.screenshot({ path: "../design/qa/desktop-settings-shell.png" });
+  await shell
+    .getByRole("button", { name: "Back to browsing", exact: true })
+    .click();
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
   await capture("desktop-extensions.png");
   await shell.getByRole("button", { name: "Done", exact: true }).click();

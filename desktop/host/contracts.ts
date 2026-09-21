@@ -1,4 +1,12 @@
 export type Lifecycle = "Active" | "Later" | "Settled";
+export type Preferences = {
+  searchEngine: "duckduckgo" | "google" | "bing" | "brave";
+  autoHideToolbar: boolean;
+  sidebarCollapsed: boolean;
+  defaultZoom: number;
+  askDownloadLocation: boolean;
+  downloadDirectory: string;
+};
 export type Task = {
   id: string;
   title: string;
@@ -26,6 +34,7 @@ export type Workspace = {
   selectedTaskId: string | null;
 };
 export type Snapshot = Omit<Workspace, "pages"> & {
+  preferences: Preferences;
   theme: {
     name: string;
     background: string;
@@ -49,6 +58,13 @@ export type Command =
   | { type: "selectTask"; id: string }
   | { type: "renameTask"; id: string; title: string }
   | { type: "moveTask"; id: string; lifecycle: Lifecycle }
+  | { type: "saveNote"; id: string; note: string }
+  | {
+      type: "setPreferences";
+      patch: Partial<Omit<Preferences, "downloadDirectory">>;
+    }
+  | { type: "chooseDownloadDirectory" | "clearCache" | "importExtension" }
+  | { type: "downloadExtension"; source: string }
   | { type: "loadExtension" }
   | { type: "removeExtension"; path: string }
   | { type: "selectPage"; id: string }

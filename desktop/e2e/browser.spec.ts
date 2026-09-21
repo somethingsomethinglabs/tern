@@ -1,3 +1,4 @@
+import AdmZip from "adm-zip";
 import {
   test,
   expect,
@@ -17,6 +18,32 @@ let shell: Page;
 let profile: string;
 test.beforeAll(async () => {
   server = createServer((req, res) => {
+    if (req.url === "/extension.crx") {
+      const zip = new AdmZip();
+      zip.addFile(
+        "manifest.json",
+        Buffer.from(
+          JSON.stringify({
+            manifest_version: 3,
+            name: "Downloaded sample",
+            version: "1.0",
+          }),
+        ),
+      );
+      const header = Buffer.alloc(12);
+      header.write("Cr24");
+      header.writeUInt32LE(3, 4);
+      res.setHeader("Content-Type", "application/x-chrome-extension");
+      res.end(Buffer.concat([header, zip.toBuffer()]));
+      return;
+    }
+    if (req.url === "/scroll") {
+      res.setHeader("Content-Type", "text/html");
+      res.end(
+        '<title>Scroll sample</title><h1>Scroll sample</h1><button>Focus page</button><div style="height:4000px">Long document</div>',
+      );
+      return;
+    }
     if (req.url === "/long-link") {
       res.setHeader("Content-Type", "text/html");
       res.end(
@@ -196,7 +223,7 @@ async function launch(themeDirectory?: string) {
   shell = await app.firstWindow();
   await shell.waitForLoadState();
   // The desktop may tile a fresh window narrowly while another browser is open.
-  // Give UI tests a consistent viewport and explicitly open the context drawer.
+  // Give UI tests a consistent viewport and explicitly open task notes.
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setFullScreen(true),
   );
@@ -205,11 +232,11 @@ async function launch(themeDirectory?: string) {
     .toBeGreaterThan(800);
   if (
     !(await shell
-      .getByRole("heading", { name: "Task context", exact: true })
+      .getByRole("heading", { name: "Task notes", exact: true })
       .isVisible())
   ) {
     await shell
-      .getByRole("button", { name: "Toggle task context", exact: true })
+      .getByRole("button", { name: "Toggle task notes", exact: true })
       .click();
   }
 }
@@ -339,11 +366,9 @@ test("pause keeps a live form and restart offers its saved reference and note", 
   await shell
     .getByRole("button", { name: "Put aside task", exact: true })
     .click();
-  await expect(
-    shell.getByText("Check the taxi receipt before submitting.", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expect(shell.getByLabel("Next step", { exact: true })).toHaveValue(
+    "Check the taxi receipt before submitting.",
+  );
   await shell.getByRole("button", { name: "Later tasks", exact: true }).click();
   await shell.getByRole("button", { name: "Resume task", exact: true }).click();
   await expect(website.getByLabel("Amount")).toHaveValue("204");
@@ -352,11 +377,9 @@ test("pause keeps a live form and restart offers its saved reference and note", 
   });
   await app.close();
   await launch();
-  await expect(
-    shell.getByText("Check the taxi receipt before submitting.", {
-      exact: true,
-    }),
-  ).toBeVisible();
+  await expect(shell.getByLabel("Next step", { exact: true })).toHaveValue(
+    "Check the taxi receipt before submitting.",
+  );
   await expect(
     shell.getByRole("heading", { name: "Reopen this reference" }),
   ).toBeVisible();
@@ -403,8 +426,8 @@ test("history, new-window links and canceled reload or close preserve user contr
     shell.getByRole("button", { name: "Select page Second page", exact: true }),
   ).toBeVisible();
   await expect(
-    shell.getByRole("heading", { name: "2 pages in this task" }),
-  ).toBeVisible();
+    shell.locator('.pages button[aria-label^="Select page "]'),
+  ).toHaveCount(2);
   await shell
     .getByRole("textbox", { name: "Address or search" })
     .fill("file:///etc/passwd");
@@ -433,8 +456,8 @@ test("website unload veto can cancel closing after the browser confirmation", as
     .getByRole("button", { name: "Close current page", exact: true })
     .click();
   await expect(
-    shell.getByRole("heading", { name: "0 pages in this task" }),
-  ).toBeVisible();
+    shell.locator('.pages button[aria-label^="Select page "]'),
+  ).toHaveCount(0);
 });
 test("settling keeps live pages, permissions are denied, and guest keyboard shortcuts reach the shell", async () => {
   await newTask("Review permissions");
@@ -467,7 +490,9 @@ test("downloads show cancellation and completion without opening files", async (
     dialog.showSaveDialogSync = () => undefined;
   });
   await website.getByRole("link", { name: "Download receipt" }).click();
+  await shell.getByRole("button", { name: "Downloads", exact: true }).click();
   await expect(shell.getByText("Canceled", { exact: true })).toBeVisible();
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
   await app.evaluate(
     ({ dialog }, path) => {
       dialog.showSaveDialogSync = () => path;
@@ -475,6 +500,7 @@ test("downloads show cancellation and completion without opening files", async (
     join(profile, "receipt.txt"),
   );
   await website.getByRole("link", { name: "Download receipt" }).click();
+  await shell.getByRole("button", { name: "Downloads", exact: true }).click();
   await expect(shell.getByText("Completed", { exact: true })).toBeVisible();
 });
 test("keyboard dialogs, find, resizing and canceled quit keep the live page usable", async () => {
@@ -521,7 +547,7 @@ test("keyboard dialogs, find, resizing and canceled quit keep the live page usab
   await shell.setViewportSize({ width: 900, height: 700 });
   await expect(shell.locator(".sidebar")).toHaveCSS("width", "230px");
   await shell.screenshot({ path: "../design/qa/desktop-shell-narrow.png" });
-  await shell.getByRole("button", { name: "Close task context" }).click();
+  await shell.getByRole("button", { name: "Close task notes" }).click();
   await expect(website.getByLabel("Amount")).toHaveValue("318.20");
 });
 
@@ -663,14 +689,14 @@ test("the shell follows theme changes while the address bar stays dark and conte
   });
   shell = await app.firstWindow();
   await expect(
-    shell.getByRole("heading", { name: "Task context", exact: true }),
+    shell.getByRole("heading", { name: "Task notes", exact: true }),
   ).not.toBeVisible();
   await shell.getByRole("button", { name: "Settings", exact: true }).click();
-  await expect(
-    shell.getByRole("heading", { name: "Trailrest settings" }),
-  ).toBeVisible();
+  await expect(shell.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(shell.getByText(/Theme: Sample theme/)).toBeVisible();
-  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  await shell
+    .getByRole("button", { name: "Back to browsing", exact: true })
+    .click();
   await expect(shell.locator(".sidebar")).toHaveCSS(
     "background-color",
     "rgb(24, 27, 30)",
@@ -790,4 +816,246 @@ test("the extensions button loads, remembers and removes an unpacked content scr
   await expect(
     restored.getByText("Extension active", { exact: true }),
   ).not.toBeVisible();
+});
+
+test("browser settings persist and change search, zoom, downloads and sidebar", async () => {
+  await newTask("Settings check");
+  await shell.getByRole("button", { name: "Settings", exact: true }).click();
+  await shell.getByLabel("Default search engine").selectOption("google");
+  await shell.getByLabel("Default page zoom").selectOption("1.25");
+  await shell.getByLabel("Hide the address bar while scrolling down").uncheck();
+  const destination = join(profile, "saved-downloads");
+  await mkdir(destination);
+  await app.evaluate(({ dialog }, destination) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [destination],
+    });
+  }, destination);
+  await shell.getByRole("button", { name: "Change download folder" }).click();
+  await expect(shell.getByText(destination, { exact: true })).toBeVisible();
+  await shell.getByLabel("Ask where to save each file").uncheck();
+  await shell.getByRole("button", { name: "Back to browsing" }).click();
+  await shell.getByRole("button", { name: "Collapse sidebar" }).click();
+  await expect(shell.locator(".sidebar")).toHaveCSS("width", "52px");
+  await app.close();
+  await launch();
+  await expect(
+    shell.getByRole("button", { name: "Expand sidebar" }),
+  ).toBeVisible();
+  await shell.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(shell.getByLabel("Default search engine")).toHaveValue("google");
+  await expect(shell.getByLabel("Default page zoom")).toHaveValue("1.25");
+  await expect(
+    shell.getByLabel("Hide the address bar while scrolling down"),
+  ).not.toBeChecked();
+  await expect(
+    shell.getByLabel("Ask where to save each file"),
+  ).not.toBeChecked();
+  await shell.getByRole("button", { name: "Back to browsing" }).click();
+  await app.context().route("https://www.google.com/search?*", (route) =>
+    route.fulfill({
+      contentType: "text/html",
+      body: "<title>Controlled Google search</title><h1>Search fixture</h1>",
+    }),
+  );
+  const address = shell.getByRole("textbox", { name: "Address or search" });
+  await address.fill("trailrest sample query");
+  await address.press("Enter");
+  await expect(address).toHaveValue(
+    "https://www.google.com/search?q=trailrest%20sample%20query",
+  );
+  const website = await navigate(origin + "/");
+  await website.getByRole("link", { name: "Download receipt" }).click();
+  await shell.getByRole("button", { name: "Downloads", exact: true }).click();
+  await expect(shell.getByText("Completed", { exact: true })).toBeVisible();
+});
+
+test("scrolling hides the toolbar, scrolling up and Ctrl+L reveal it", async () => {
+  await newTask("Read a long page");
+  const website = await navigate(origin + "/scroll");
+  await website.getByRole("button", { name: "Focus page" }).click();
+  await website.mouse.wheel(0, 700);
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).not.toBeVisible();
+  await expect(
+    shell.getByRole("button", { name: "Show address bar" }),
+  ).toBeVisible();
+  await website.mouse.wheel(0, -250);
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toBeVisible();
+  await website.mouse.wheel(0, 400);
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).not.toBeVisible();
+  await nativeShortcut(website, "L");
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toBeFocused();
+  await shell.getByRole("button", { name: "Settings", exact: true }).click();
+  await shell.getByLabel("Hide the address bar while scrolling down").uncheck();
+  await shell.getByRole("button", { name: "Back to browsing" }).click();
+  await website.getByRole("button", { name: "Focus page" }).click();
+  await website.mouse.wheel(0, 700);
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toBeVisible();
+});
+
+test("task notes edit independently, keep oversized drafts and restore after restart", async () => {
+  await newTask("Editable notes");
+  await shell.getByLabel("Next step", { exact: true }).fill("x".repeat(550));
+  await expect(shell.getByRole("button", { name: "Save note" })).toBeDisabled();
+  await expect(shell.getByLabel("Next step", { exact: true })).toHaveValue(
+    "x".repeat(550),
+  );
+  await shell
+    .getByLabel("Next step", { exact: true })
+    .fill("Call the supplier, then compare quotes.");
+  await shell.getByRole("button", { name: "Save note" }).click();
+  await expect(shell.getByRole("status")).toHaveText("Note saved");
+  await expect(shell.getByLabel("Task status", { exact: true })).toHaveValue(
+    "Active",
+  );
+  await shell.getByRole("button", { name: "Close task notes" }).click();
+  await shell.getByRole("button", { name: "Toggle task notes" }).click();
+  await expect(shell.getByLabel("Next step", { exact: true })).toHaveValue(
+    "Call the supplier, then compare quotes.",
+  );
+  await app.close();
+  await launch();
+  await expect(shell.getByLabel("Next step", { exact: true })).toHaveValue(
+    "Call the supplier, then compare quotes.",
+  );
+});
+
+test("ZIP and CRX package imports load a sample extension and reject unsafe paths", async () => {
+  const zip = new AdmZip();
+  zip.addFile(
+    "manifest.json",
+    Buffer.from(
+      JSON.stringify({
+        manifest_version: 3,
+        name: "Packaged sample",
+        version: "1.0",
+        content_scripts: [
+          { matches: ["http://127.0.0.1/*"], js: ["content.js"] },
+        ],
+      }),
+    ),
+  );
+  zip.addFile(
+    "content.js",
+    Buffer.from(
+      'const p = document.createElement("p"); p.textContent = "Package extension active"; document.body.append(p);',
+    ),
+  );
+  const zipPath = join(profile, "sample.zip");
+  await writeFile(zipPath, zip.toBuffer());
+  await newTask("Package check");
+  await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  const choose = async (path: string) =>
+    app.evaluate(({ dialog }, path) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [path],
+      });
+      dialog.showMessageBox = async () => ({
+        response: 1,
+        checkboxChecked: false,
+      });
+    }, path);
+  await choose(zipPath);
+  await shell
+    .getByRole("button", { name: "Import package", exact: true })
+    .click();
+  await expect(
+    shell.getByRole("button", { name: "Remove Packaged sample" }),
+  ).toBeVisible();
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  const website = await navigate(origin + "/");
+  await expect(
+    website.getByText("Package extension active", { exact: true }),
+  ).toBeVisible();
+  await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByRole("button", { name: "Remove Packaged sample" }).click();
+  const crxHeader = Buffer.alloc(12);
+  crxHeader.write("Cr24");
+  crxHeader.writeUInt32LE(3, 4);
+  const crxPath = join(profile, "sample.crx");
+  await writeFile(crxPath, Buffer.concat([crxHeader, zip.toBuffer()]));
+  await choose(crxPath);
+  await shell
+    .getByRole("button", { name: "Import package", exact: true })
+    .click();
+  await expect(
+    shell.getByRole("button", { name: "Remove Packaged sample" }),
+  ).toBeVisible();
+  await shell.getByRole("button", { name: "Remove Packaged sample" }).click();
+  zip.getEntry("content.js")!.entryName = "../escaped.js";
+  const unsafe = join(profile, "unsafe.zip");
+  await writeFile(unsafe, zip.toBuffer());
+  await choose(unsafe);
+  await shell
+    .getByRole("button", { name: "Import package", exact: true })
+    .click();
+  await expect(shell.getByRole("dialog").getByRole("alert")).toContainText(
+    "unsafe",
+  );
+  await expect(shell.getByText("No extensions loaded.")).toBeVisible();
+});
+
+test("Store links download a package through the UI and invalid links are rejected", async () => {
+  const destination = join(profile, "downloaded.crx");
+  await app.evaluate(
+    ({ session, dialog }, { destination, origin }) => {
+      session.defaultSession.webRequest.onBeforeRequest(
+        { urls: ["https://clients2.google.com/service/update2/crx*"] },
+        (_details, callback) =>
+          callback({ redirectURL: origin + "/extension.crx" }),
+      );
+      dialog.showSaveDialog = async () => ({
+        canceled: false,
+        filePath: destination,
+      });
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [destination],
+      });
+      dialog.showMessageBox = async () => ({
+        response: 1,
+        checkboxChecked: false,
+      });
+    },
+    { destination, origin },
+  );
+  await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  const input = shell.getByLabel("Chrome Web Store link or extension ID");
+  await input.fill("https://example.com/not-an-extension");
+  await shell
+    .getByRole("button", { name: "Download package", exact: true })
+    .click();
+  await expect(shell.getByRole("dialog").getByRole("alert")).toContainText(
+    "Chrome Web Store",
+  );
+  await input.fill(
+    "https://chromewebstore.google.com/detail/sample/" + "a".repeat(32),
+  );
+  await shell
+    .getByRole("button", { name: "Download package", exact: true })
+    .click();
+  await expect(shell.getByRole("dialog").getByRole("status")).toContainText(
+    "Extension package downloaded",
+  );
+  await shell
+    .getByRole("button", { name: "Import package", exact: true })
+    .click();
+  await expect(
+    shell.getByRole("button", {
+      name: "Remove Downloaded sample",
+      exact: true,
+    }),
+  ).toBeVisible();
 });

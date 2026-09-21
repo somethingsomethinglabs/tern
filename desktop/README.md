@@ -13,7 +13,7 @@ npm start
 
 Build a standalone Linux directory with `npm run package`. From the repository root, `./start-trailrest` opens that packaged build when available, otherwise it starts the local development build. No Vite server is needed. The launcher clears `ELECTRON_RUN_AS_NODE`, which some development tools inherit.
 
-Create a task, then enter an HTTP(S) address or search query. Searches use DuckDuckGo. Pages keep their in-memory state across task and page switches, including when a task is put aside or settled. Closing or reloading a page asks first. Quitting warns that live website state will end.
+Create a task, then enter an HTTP(S) address or search query. Searches use DuckDuckGo by default; Settings also offers Google, Bing and Brave Search. Pages keep their in-memory state across task and page switches, including when a task is put aside or settled. Closing or reloading a page asks first. Quitting warns that live website state will end.
 
 Task names, lifecycle, notes and page addresses are saved in `workspace.json` in Electron's Trailrest user data directory, normally `~/.config/Trailrest` on Linux. Website cookies and storage use the separate `persist:trailrest-web` session in that profile. Set `TRAILREST_PROFILE` to an absolute directory for an isolated profile. Only one application instance opens a given profile.
 
@@ -21,13 +21,19 @@ After restart, saved pages appear as references to reopen. Unsaved form values, 
 
 ## Tasks, settings and appearance
 
-Later and Settled start collapsed. Click either heading to show its tasks. Drag a task title onto either heading to move it there; drag back to the active task list to resume it. Moving a task preserves its note and live pages. The Task context panel also has a keyboard-accessible status selector.
+Later and Settled start collapsed. Click either heading to show its tasks. Drag a task title onto either heading to move it there; drag back to the active task list to resume it. Moving a task preserves its note and live pages. Task notes also has a keyboard-accessible status selector.
 
-Task context is an optional panel, closed initially. It shows the note you wrote when putting a task aside, its page count and download status. It does not read or summarize websites. Open it using the panel icon beside the address bar.
+Task notes is an optional panel, closed initially. Use it to edit and save a next-step reminder without changing task status. Drafts remain in the panel when switching tasks or closing it; only saved notes survive quitting. Open it using the note icon beside the address bar. Downloads have their own toolbar button.
 
 The shell reads Omarchy's current colors from `$XDG_STATE_HOME/omarchy/current/theme/colors.toml`, normally `~/.local/state/omarchy/current/theme/colors.toml`. The older `~/.config/omarchy/current` location is also supported. It picks up changes while running and falls back to a dark palette when no valid theme is available. The address bar always stays dark. `TRAILREST_THEME_DIR` overrides the current-theme directory for isolated checks.
 
-The sidebar Settings button opens Trailrest settings and shortcut help. Electron does not include Chromium's native settings page. The top-right puzzle button opens Extensions. It can load and remove unpacked extension folders, remembering them in `extensions.json` in the profile. Extensions run only in the website session. Changes apply to newly loaded pages; reloading existing pages can lose unsaved edits. Some Chrome APIs, extension toolbar popups, and Chrome Web Store installation are unavailable. See [Electron's supported extension APIs](https://www.electronjs.org/docs/latest/api/extensions).
+The top-left sidebar button collapses tasks into a narrow rail. The choice survives restarting. Scrolling down a website hides the address bar; scrolling up, using the top reveal strip or pressing Ctrl+L restores it. Settings can disable this behavior.
+
+Settings is a full browser page with persisted search-engine selection, default zoom, download folder and location prompting, toolbar behavior and explicit cache clearing. Preferences live in `preferences.json` in the profile. Clearing cache retains cookies, logins and task metadata.
+
+The top-right puzzle button opens Extensions. Paste a Chrome Web Store link or ID and choose Download package to save its CRX from Google's service. Then use Import package to review and load a ZIP/CRX. A developer-supplied package works through the same flow, and Load unpacked remains available for folders. Imports validate archive paths and size limits, show manifest details and ask before loading. Publisher signatures are not verified; an imported package is treated as unpacked code. Imported files are kept under the profile's `imported-extensions` directory. Removing an extension unloads it and removes its registration; its imported files remain on disk.
+
+Registrations are remembered in `extensions.json`. Extensions run only in the website session. Changes apply to newly loaded pages; reloading existing pages can lose unsaved edits. Some Chrome APIs and extension toolbar popups remain unsupported. Chrome's Add to Chrome button is not connected to Trailrest, and downloading a package does not guarantee compatibility. See [Electron's supported extension APIs](https://www.electronjs.org/docs/latest/api/extensions).
 
 ## Keyboard
 
@@ -59,8 +65,8 @@ After packaging, `node scripts/visual-check.mjs` performs the optional native sc
 
 ## Current limits
 
-This is a local alpha. It has no assistant service, full Chrome extension compatibility, sync, password manager, profile import, private browsing, or automatic engine updates. Website permission requests, including camera, microphone, location, notifications and clipboard permissions, are denied with a message. Unsupported external schemes are blocked. Some sign-in and payment flows may depend on capabilities this build does not provide. Downloading a file asks for a destination and never executes it.
+This is a local alpha. It has no assistant service, full Chrome extension compatibility, sync, password manager, profile import, private browsing, or automatic engine updates. Website permission requests, including camera, microphone, location, notifications and clipboard permissions, are denied with a message. Unsupported external schemes are blocked. Some sign-in and payment flows may depend on capabilities this build does not provide. Downloads use your location preference and never execute the saved file.
 
-Remote pages have no Node access or Trailrest preload. The shell uses a dedicated local protocol and session, and the main process validates command senders and arguments. Electron is pinned to 44.4.3. Before wider distribution, update Electron regularly and expand compatibility and security testing. The UI checks here establish the tested workflows, not a general security certification.
+Remote pages have no Node access or exposed Trailrest bridge. A sandboxed, isolated preload observes only scroll positions for toolbar visibility; it sends no website content. The shell uses a dedicated local protocol and session, and the main process validates command senders and arguments. Electron is pinned to 44.4.3. Before wider distribution, update Electron regularly and expand compatibility and security testing. The UI checks here establish the tested workflows, not a general security certification.
 
-See the [desktop specification](../docs/desktop-browser-spec.md), [engine decision](../docs/adr/0001-desktop-browser-host.md), and [host research](../docs/browser-host-research.md).
+See the [original-spec gap review](../docs/original-spec-gap-review.md), [desktop specification](../docs/desktop-browser-spec.md), [engine decision](../docs/adr/0001-desktop-browser-host.md), and [host research](../docs/browser-host-research.md).

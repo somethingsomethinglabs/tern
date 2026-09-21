@@ -13,6 +13,7 @@ Run `./start-trailrest` to open the desktop browser after building or packaging 
 - [Settle and resume specification](docs/settle-and-resume-spec.md)
 - [Design QA and screenshots](design-qa.md)
 - [Implementation review](docs/implementation-review.md)
+- [Original-spec gap review](docs/original-spec-gap-review.md)
 - [Browser research](docs/browser-rethinking-research.md)
 - [Historical and academic research](docs/browser-history-research.md)
 
