@@ -53,7 +53,7 @@ export class WorkspaceFile {
             !page ||
             !string(page.id, 100) ||
             !string(page.title, 1000) ||
-            !string(page.url, 8192) ||
+            typeof page.url !== "string" ||
             !value.tasks.some(
               (task: Workspace["tasks"][number]) => task.id === page.taskId,
             )

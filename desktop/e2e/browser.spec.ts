@@ -17,6 +17,13 @@ let shell: Page;
 let profile: string;
 test.beforeAll(async () => {
   server = createServer((req, res) => {
+    if (req.url === "/long-link") {
+      res.setHeader("Content-Type", "text/html");
+      res.end(
+        `<title>Long reference</title><a href="/second?reference=${"x".repeat(9000)}">Open long reference</a>`,
+      );
+      return;
+    }
     if (req.url === "/unavailable") {
       req.socket.destroy();
       return;
@@ -70,6 +77,29 @@ test.beforeAll(async () => {
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+});
+test("a long website-generated reference survives restart with its task", async () => {
+  await newTask("Keep a long reference");
+  const website = await navigate(origin + "/long-link");
+  await website.getByRole("link", { name: "Open long reference" }).click();
+  const longURL = origin + "/second?reference=" + "x".repeat(9000);
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toHaveValue(longURL);
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBoxSync = () => 1;
+  });
+  await app.close();
+  await launch();
+  await expect(
+    shell.getByRole("heading", { name: "Keep a long reference", exact: true }),
+  ).toBeVisible();
+  await expect(
+    shell.getByRole("heading", { name: "Reopen this reference" }),
+  ).toBeVisible();
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toHaveValue(longURL);
 });
 test("failed page loads can be recovered and renamed tasks remain searchable", async () => {
   await newTask("Initial title");
@@ -234,6 +264,48 @@ test("a real website form stays live when switching tasks", async () => {
   await expect(website.getByLabel("Amount")).toHaveValue("138.50");
   await website.getByRole("button", { name: "Check isolation" }).click();
   await expect(website.locator("output")).toHaveText("undefined/undefined");
+});
+test("a renderer crash becomes a reference to reopen, not a live page", async () => {
+  await newTask("Recover a page");
+  const website = await navigate(origin + "/");
+  await website.getByLabel("Amount").fill("Unsaved value");
+  await app.evaluate(
+    ({ webContents }, url) =>
+      webContents
+        .getAllWebContents()
+        .find((contents) => contents.getURL() === url)!
+        .forcefullyCrashRenderer(),
+    origin + "/",
+  );
+  await expect(
+    shell.getByText("This page stopped unexpectedly. Reopen it to continue.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    shell
+      .getByRole("button", { name: "Select page Expense claim" })
+      .getByTitle("Live page"),
+  ).toHaveCount(0);
+  await shell.getByRole("button", { name: "Reopen page", exact: true }).click();
+  await expect
+    .poll(() =>
+      app
+        .context()
+        .pages()
+        .some((page) => page.url() === origin + "/" && !page.isClosed()),
+    )
+    .toBe(true);
+  const reopened = app
+    .context()
+    .pages()
+    .find((page) => page.url() === origin + "/" && !page.isClosed())!;
+  await expect(reopened.getByLabel("Amount")).toHaveValue("");
+  await expect(
+    shell
+      .getByRole("button", { name: "Select page Expense claim" })
+      .getByTitle("Live page"),
+  ).toBeVisible();
 });
 test("pause keeps a live form and restart offers its saved reference and note", async () => {
   await newTask("Claim travel");

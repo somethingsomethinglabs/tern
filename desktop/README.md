@@ -40,6 +40,8 @@ npm test
 
 Tests launch the actual sandboxed Electron app against controlled HTTP sites and temporary profiles. A graphical Linux session must be available. Native dialog responses are automated at the Electron boundary; website and shell behavior are asserted through their UI. Screenshots go to `design/qa/desktop-*.png`.
 
+After packaging, `node scripts/visual-check.mjs` performs the optional native screenshot check on this machine's Hyprland desktop. It uses a temporary profile and captures only its own test window. See the [implementation review](../docs/desktop-implementation-review.md) for findings and visual evidence.
+
 ## Current limits
 
 This is a local alpha. It has no assistant service, extensions, sync, password manager, profile import, private browsing, or automatic engine updates. Website permission requests, including camera, microphone, location, notifications and clipboard permissions, are denied with a message. Unsupported external schemes are blocked. Some sign-in and payment flows may depend on capabilities this build does not provide. Downloading a file asks for a destination and never executes it.

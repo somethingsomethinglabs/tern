@@ -43,6 +43,7 @@ const workspace: Workspace = {
   selectedTaskId: null,
 };
 const views = new Map<string, WebContentsView>();
+const lostRenderers = new Set<string>();
 const errors = new Map<string, string>();
 let window: BrowserWindow;
 let guests: Session;
@@ -79,7 +80,7 @@ function snapshot(): Snapshot {
       const contents = views.get(page.id)?.webContents;
       return {
         ...page,
-        live: !!contents,
+        live: !!contents && !lostRenderers.has(page.id),
         loading: contents?.isLoading() ?? false,
         error: errors.get(page.id) ?? "",
         canGoBack: contents?.navigationHistory.canGoBack() ?? false,
@@ -150,6 +151,15 @@ function newPage(taskId: string, url = "") {
   task.selectedPageId = page.id;
   return page;
 }
+function guestPreferences(): Electron.WebPreferences {
+  return {
+    session: guests,
+    nodeIntegration: false,
+    contextIsolation: true,
+    sandbox: true,
+    webSecurity: true,
+  };
+}
 function showPage(
   page: PageRecord,
   load = true,
@@ -161,14 +171,9 @@ function showPage(
   }
   const view = new WebContentsView({
     ...(adopt ? { webContents: adopt } : {}),
-    webPreferences: {
-      session: guests,
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-      webSecurity: true,
-    },
+    webPreferences: guestPreferences(),
   });
+  lostRenderers.delete(page.id);
   views.set(page.id, view);
   window.contentView.addChildView(view);
   const contents = view.webContents;
@@ -198,6 +203,7 @@ function showPage(
     }
   });
   contents.on("render-process-gone", () => {
+    lostRenderers.add(page.id);
     errors.set(
       page.id,
       "This page stopped unexpectedly. Reopen it to continue.",
@@ -249,13 +255,7 @@ function showPage(
       action: "allow",
       outlivesOpener: true,
       overrideBrowserWindowOptions: {
-        webPreferences: {
-          session: guests,
-          nodeIntegration: false,
-          contextIsolation: true,
-          sandbox: true,
-          webSecurity: true,
-        },
+        webPreferences: guestPreferences(),
       },
       createWindow: (options) => {
         const popup = newPage(page.taskId, details.url);

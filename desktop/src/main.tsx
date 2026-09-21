@@ -42,6 +42,8 @@ function App() {
   const addressInput = useRef<HTMLInputElement>(null);
   const task = state?.tasks.find((task) => task.id === state.selectedTaskId);
   const page = state?.pages.find((page) => page.id === task?.selectedPageId);
+  const pageCount =
+    state?.pages.filter((page) => page.taskId === task?.id).length ?? 0;
   const send = async (command: Command) => {
     try {
       setError("");
@@ -405,7 +407,7 @@ function App() {
         )}
         <div className="content">
           <div ref={site} className="website">
-            {!page?.live && (
+            {!page?.live && !page?.error && (
               <div className="empty">
                 <Leaf size={44} weight="duotone" />
                 <h2>
@@ -470,9 +472,7 @@ function App() {
               </p>
               <div className="rule" />
               <h3>
-                {state?.pages.filter((page) => page.taskId === task?.id)
-                  .length ?? 0}{" "}
-                pages in this task
+                {pageCount} {pageCount === 1 ? "page" : "pages"} in this task
               </h3>
               <p className="muted">
                 Live pages keep their state while Trailrest is running.

@@ -41,7 +41,10 @@ try {
     await app.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0].focus(),
     );
-    execFileSync('hyprctl',['dispatch','focuswindow',`pid:${app.process().pid}`]);
+    execFileSync("hyprctl", [
+      "dispatch",
+      `hl.dsp.focus({ window = "pid:${app.process().pid}" })`,
+    ]);
     await new Promise((resolve) => setTimeout(resolve, 500));
     const active = JSON.parse(
       execFileSync("hyprctl", ["activewindow", "-j"], { encoding: "utf8" }),
