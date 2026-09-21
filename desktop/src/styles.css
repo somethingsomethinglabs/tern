@@ -81,15 +81,6 @@ textarea {
   font-size: 19px;
   font-weight: 600;
 }
-.brand > span {
-  margin-left: auto;
-  font-size: 9px;
-  letter-spacing: 1px;
-  color: #abb6ba;
-  border: 1px solid #50585b;
-  border-radius: 4px;
-  padding: 4px;
-}
 .brand svg {
   color: #bbd1c5;
 }
@@ -201,24 +192,29 @@ textarea {
   margin-top: 5px;
 }
 .sidebar-foot {
-  padding: 18px 17px;
+  padding: 10px 12px;
   border-top: 1px solid #3e4648;
-  font-size: 11px;
-  color: #b7c4ca;
-  display: flex;
+}
+.settings-button {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 10px;
+  color: #cbd8dc;
+  font-size: 13px;
+}
+.dialog .settings-option {
+  flex-direction: row;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  font-size: 14px;
 }
-.sidebar-foot small {
-  margin-left: auto;
-  color: #9facb1;
+.dialog .settings-option input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  accent-color: #0d7883;
 }
-.live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #8ec7af;
-}
+
 main {
   flex: 1;
   min-width: 0;
@@ -554,9 +550,6 @@ dialog:not([open]) {
   }
   .brand {
     padding: 0 14px;
-  }
-  .brand > span {
-    display: none;
   }
   .task-title {
     font-size: 12px;

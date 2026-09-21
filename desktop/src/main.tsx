@@ -15,6 +15,7 @@ import {
   Play,
   Check,
   SidebarSimple,
+  GearSix,
 } from "@phosphor-icons/react";
 import type { Bridge, Command, Snapshot } from "../host/contracts";
 import "./styles.css";
@@ -29,7 +30,7 @@ function App() {
   const [address, setAddress] = useState("");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState<
-    "create" | "pause" | "settle" | "rename" | null
+    "create" | "pause" | "settle" | "rename" | "settings" | null
   >(null);
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
@@ -133,7 +134,6 @@ function App() {
         <div className="brand">
           <Leaf size={25} weight="duotone" />
           <strong>Trailrest</strong>
-          <span>DESKTOP</span>
         </div>
         <div className="task-search">
           <MagnifyingGlass size={18} />
@@ -156,14 +156,20 @@ function App() {
         </button>
         <nav aria-label="Tasks">
           {(["Active", "Later", "Settled"] as const).map((group) => (
-            <section className="task-group" key={group}>
-              <h2>
-                {group}
-                <span>
-                  {state?.tasks.filter((task) => task.lifecycle === group)
-                    .length ?? 0}
-                </span>
-              </h2>
+            <section
+              className="task-group"
+              key={group}
+              aria-label={group + " tasks"}
+            >
+              {group !== "Active" && (
+                <h2>
+                  {group}
+                  <span>
+                    {state?.tasks.filter((task) => task.lifecycle === group)
+                      .length ?? 0}
+                  </span>
+                </h2>
+              )}
               {state?.tasks
                 .filter(
                   (task) =>
@@ -291,8 +297,13 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <span className="live-dot" />
-          Local browser <small>0.1 · Linux</small>
+          <button
+            className="settings-button"
+            onClick={() => setModal("settings")}
+          >
+            <GearSix size={19} />
+            Settings
+          </button>
         </div>
       </aside>
       <main>
@@ -527,84 +538,107 @@ function App() {
         onCancel={() => setModal(null)}
         onClose={() => setModal(null)}
       >
-        <form
-          onSubmit={async (event) => {
-            event.preventDefault();
-            const command: Command =
-              modal === "pause"
-                ? { type: "pause", note }
-                : modal === "settle"
-                  ? { type: "settle" }
-                  : modal === "rename"
-                    ? { type: "renameTask", id: task!.id, title: name }
-                    : { type: "createTask", title: name };
-            if (await send(command)) setModal(null);
-          }}
-        >
-          <h2 id="dialog-title">
-            {modal === "pause"
-              ? "A place to pick up again"
-              : modal === "settle"
-                ? "Ready to settle this task?"
-                : modal === "rename"
-                  ? "Rename this task"
-                  : "Give this task a name"}
-          </h2>
-          <p>
-            {modal === "pause"
-              ? "Your pages stay live. Leave a short note for when you return."
-              : modal === "settle"
-                ? "Settling marks your work finished. It does not save or submit any website. Your pages stay available."
-                : "What are you working toward?"}
-          </p>
-          {modal === "pause" ? (
-            <>
-              <label>
-                Where I left off
-                <textarea
-                  autoFocus
-                  rows={5}
-                  maxLength={500}
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="What is the next small step?"
-                />
-              </label>
-              <small>{note.length}/500 · Optional</small>
-            </>
-          ) : (
-            modal !== "settle" && (
-              <label>
-                Task name
-                <input
-                  autoFocus
-                  maxLength={120}
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                />
-              </label>
-            )
-          )}
-          <footer>
-            <button type="button" onClick={() => setModal(null)}>
-              Cancel
-            </button>
-            <button
-              className="primary"
-              disabled={
-                (modal === "create" || modal === "rename") && !name.trim()
-              }
-            >
+        {modal === "settings" ? (
+          <section>
+            <h2 id="dialog-title">Settings</h2>
+            <label className="settings-option">
+              <input
+                type="checkbox"
+                checked={drawer}
+                onChange={(event) => setDrawer(event.target.checked)}
+              />
+              Show task context panel
+            </label>
+            <p>
+              Show your resumption note and page information alongside the
+              current website.
+            </p>
+            <footer>
+              <button className="primary" onClick={() => setModal(null)}>
+                Done
+              </button>
+            </footer>
+          </section>
+        ) : (
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const command: Command =
+                modal === "pause"
+                  ? { type: "pause", note }
+                  : modal === "settle"
+                    ? { type: "settle" }
+                    : modal === "rename"
+                      ? { type: "renameTask", id: task!.id, title: name }
+                      : { type: "createTask", title: name };
+              if (await send(command)) setModal(null);
+            }}
+          >
+            <h2 id="dialog-title">
               {modal === "pause"
-                ? "Put aside task"
+                ? "A place to pick up again"
                 : modal === "settle"
-                  ? "Settle task"
+                  ? "Ready to settle this task?"
                   : modal === "rename"
-                    ? "Save name"
-                    : "Create task"}
-            </button>
-          </footer>
-        </form>
+                    ? "Rename this task"
+                    : "Give this task a name"}
+            </h2>
+            <p>
+              {modal === "pause"
+                ? "Your pages stay live. Leave a short note for when you return."
+                : modal === "settle"
+                  ? "Settling marks your work finished. It does not save or submit any website. Your pages stay available."
+                  : "What are you working toward?"}
+            </p>
+            {modal === "pause" ? (
+              <>
+                <label>
+                  Where I left off
+                  <textarea
+                    autoFocus
+                    rows={5}
+                    maxLength={500}
+                    value={note}
+                    onChange={(event) => setNote(event.target.value)}
+                    placeholder="What is the next small step?"
+                  />
+                </label>
+                <small>{note.length}/500 · Optional</small>
+              </>
+            ) : (
+              modal !== "settle" && (
+                <label>
+                  Task name
+                  <input
+                    autoFocus
+                    maxLength={120}
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                  />
+                </label>
+              )
+            )}
+            <footer>
+              <button type="button" onClick={() => setModal(null)}>
+                Cancel
+              </button>
+              <button
+                className="primary"
+                disabled={
+                  (modal === "create" || modal === "rename") && !name.trim()
+                }
+              >
+                {modal === "pause"
+                  ? "Put aside task"
+                  : modal === "settle"
+                    ? "Settle task"
+                    : modal === "rename"
+                      ? "Save name"
+                      : "Create task"}
+              </button>
+            </footer>
+          </form>
+        )}
       </dialog>
     </div>
   );
