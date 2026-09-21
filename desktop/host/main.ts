@@ -23,6 +23,8 @@ import type {
   Workspace,
 } from "./contracts.js";
 import { WorkspaceFile } from "./workspace-file.js";
+import { readTheme } from "./theme.js";
+import { ExtensionLibrary } from "./extensions.js";
 
 app.setName("Trailrest");
 if (process.env.TRAILREST_PROFILE)
@@ -47,12 +49,14 @@ const lostRenderers = new Set<string>();
 const errors = new Map<string, string>();
 let window: BrowserWindow;
 let guests: Session;
+let extensions: ExtensionLibrary;
+let theme = readTheme();
 let notice = "";
 let quitting = false;
 const downloads: Snapshot["downloads"] = [];
 let pageBounds: PageBounds = {
   x: 280,
-  y: 140,
+  y: 56,
   width: 800,
   height: 600,
   visible: false,
@@ -73,6 +77,8 @@ function currentContents() {
 function snapshot(): Snapshot {
   return {
     ...workspace,
+    theme,
+    extensions: extensions?.list() ?? [],
     notice,
     storageError: storage.error,
     downloads,
@@ -300,8 +306,21 @@ function confirm(message: string, detail: string, action: string) {
   );
 }
 function keyboard(event: Electron.Event, input: Electron.Input) {
-  if (input.type !== "keyDown") return;
   const key = input.key.toLowerCase();
+  const alt = input.alt && !input.control && !input.meta && !input.shift;
+  window.webContents.send(
+    "shell:shortcut",
+    alt && !(key === "alt" && input.type === "keyUp")
+      ? "hints:on"
+      : "hints:off",
+  );
+  if (input.type !== "keyDown") return;
+  if (alt && /^[a-z0-9]$/.test(key)) {
+    event.preventDefault();
+    window.webContents.focus();
+    window.webContents.send("shell:shortcut", "switch:" + key);
+    return;
+  }
   if (
     (input.control || input.meta) &&
     ["l", "t", "f", "w", "r"].includes(key)
@@ -340,6 +359,28 @@ async function command(raw: unknown) {
     return input;
   };
   switch (value.type) {
+    case "loadExtension": {
+      const result = await dialog.showOpenDialog(window, {
+        title: "Load unpacked extension",
+        properties: ["openDirectory"],
+        buttonLabel: "Load extension",
+      });
+      if (!result.canceled && result.filePaths[0])
+        await extensions.add(result.filePaths[0]);
+      break;
+    }
+    case "removeExtension":
+      extensions.remove(text(value.path, 8192));
+      break;
+    case "moveTask": {
+      const task = workspace.tasks.find(
+        (task) => task.id === text(value.id, 100),
+      );
+      if (!task || !["Active", "Later", "Settled"].includes(value.lifecycle))
+        throw new Error("Invalid task destination.");
+      task.lifecycle = value.lifecycle;
+      break;
+    }
     case "createTask": {
       const title = text(value.title, 120).trim();
       if (!title) throw new Error("Enter a task name.");
@@ -511,6 +552,7 @@ async function start() {
   });
   await app.whenReady();
   guests = session.fromPartition("persist:trailrest-web");
+  extensions = new ExtensionLibrary(guests, app.getPath("userData"));
   guests.setPermissionRequestHandler((contents, permission, callback) => {
     callback(false);
     let origin = "This website";
@@ -569,7 +611,7 @@ async function start() {
     minWidth: 480,
     minHeight: 480,
     title: "Trailrest",
-    backgroundColor: "#242829",
+    backgroundColor: theme.background,
     webPreferences: {
       session: shellSession,
       preload: resolve(directory, "preload.cjs"),
@@ -583,6 +625,18 @@ async function start() {
   window.webContents.on("will-navigate", (event) => event.preventDefault());
   window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("before-input-event", keyboard);
+  window.on("blur", () =>
+    window.webContents.send("shell:shortcut", "hints:off"),
+  );
+  const themeTimer = setInterval(() => {
+    const next = readTheme();
+    if (JSON.stringify(next) !== JSON.stringify(theme)) {
+      theme = next;
+      publish();
+    }
+  }, 1500);
+  themeTimer.unref();
+  window.on("closed", () => clearInterval(themeTimer));
   ipcMain.handle("workspace:read", (event) => {
     trusted(event);
     return snapshot();
@@ -637,6 +691,13 @@ async function start() {
       if (!view.webContents.isDestroyed()) view.webContents.close();
   });
   app.on("window-all-closed", () => app.quit());
+  // Install permission/download handlers and create the window before running
+  // any remembered extension background scripts.
+  try {
+    await extensions.restore();
+  } catch (error) {
+    notice = String(error);
+  }
   await window.loadURL("trailrest://app/index.html");
 }
 void start().catch((error) => {

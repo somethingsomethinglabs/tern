@@ -17,7 +17,9 @@ const profile = await mkdtemp(join(tmpdir(), "trailrest-visual-"));
 const env = { ...process.env, TRAILREST_PROFILE: profile };
 delete env.ELECTRON_RUN_AS_NODE;
 const app = await electron.launch({
-  executablePath: join(process.cwd(), "release/Trailrest-linux-x64/Trailrest"),
+  executablePath:
+    process.env.TRAILREST_EXECUTABLE ||
+    join(process.cwd(), "release/Trailrest-linux-x64/Trailrest"),
   env,
   chromiumSandbox: true,
 });
@@ -68,6 +70,36 @@ try {
     .getByRole("button", { name: "Put aside task", exact: true })
     .click();
   await capture("desktop-native-later.png");
+  await shell.getByRole("button", { name: "Later tasks", exact: true }).click();
+  await shell
+    .getByRole("button", { name: "Toggle task context", exact: true })
+    .click();
+  await capture("desktop-native-context.png");
+  await shell
+    .getByRole("button", { name: "Close task context", exact: true })
+    .click();
+  await app.evaluate(({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0].webContents;
+    contents.focus();
+    contents.sendInputEvent({
+      type: "keyDown",
+      keyCode: "Alt",
+      modifiers: ["alt"],
+    });
+  });
+  await capture("desktop-native-shortcuts.png");
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0].webContents.sendInputEvent({
+      type: "keyUp",
+      keyCode: "Alt",
+    });
+  });
+  await shell.getByRole("button", { name: "Settings", exact: true }).click();
+  await capture("desktop-settings.png");
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await capture("desktop-extensions.png");
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
 } finally {
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBoxSync = () => 1;

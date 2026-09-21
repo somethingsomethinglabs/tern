@@ -92,7 +92,10 @@ test("a long website-generated reference survives restart with its task", async 
   await app.close();
   await launch();
   await expect(
-    shell.getByRole("heading", { name: "Keep a long reference", exact: true }),
+    shell.getByRole("button", {
+      name: "Select task Keep a long reference",
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(
     shell.getByRole("heading", { name: "Reopen this reference" }),
@@ -142,7 +145,7 @@ test("storage failures are visible and an unreadable workspace is preserved", as
   await expect(shell.getByRole("alert")).toContainText("preserved");
   await newTask("Fresh work");
   await expect(
-    shell.getByRole("heading", { name: "Fresh work", exact: true }),
+    shell.getByRole("button", { name: "Select task Fresh work", exact: true }),
   ).toBeVisible();
 });
 test("script popups retain their opener and target forms keep POST data", async () => {
@@ -175,7 +178,7 @@ test("script popups retain their opener and target forms keep POST data", async 
 test.afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
-async function launch() {
+async function launch(themeDirectory?: string) {
   app = await electron.launch({
     args: ["."],
     cwd: process.cwd(),
@@ -183,6 +186,7 @@ async function launch() {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "",
       TRAILREST_PROFILE: profile,
+      ...(themeDirectory ? { TRAILREST_THEME_DIR: themeDirectory } : {}),
     },
     chromiumSandbox: true,
   });
@@ -340,6 +344,7 @@ test("pause keeps a live form and restart offers its saved reference and note", 
       exact: true,
     }),
   ).toBeVisible();
+  await shell.getByRole("button", { name: "Later tasks", exact: true }).click();
   await shell.getByRole("button", { name: "Resume task", exact: true }).click();
   await expect(website.getByLabel("Amount")).toHaveValue("204");
   await app.evaluate(({ dialog }) => {
@@ -445,6 +450,9 @@ test("settling keeps live pages, permissions are denied, and guest keyboard shor
   ).toBeFocused();
   await shell.getByRole("button", { name: "Settle", exact: true }).click();
   await shell.getByRole("button", { name: "Settle task", exact: true }).click();
+  await shell
+    .getByRole("button", { name: "Settled tasks", exact: true })
+    .click();
   await expect(
     shell.getByRole("button", { name: "Resume task", exact: true }),
   ).toBeVisible();
@@ -491,9 +499,7 @@ test("keyboard dialogs, find, resizing and canceled quit keep the live page usab
     BrowserWindow.getAllWindows()[0].close();
   });
   await expect(website.getByLabel("Amount")).toHaveValue("318.20");
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].setContentSize(1488, 900),
-  );
+  await shell.setViewportSize({ width: 1488, height: 900 });
   await shell.screenshot({ path: "../design/qa/desktop-shell-wide.png" });
   const capture = await app.evaluate(async ({ BrowserWindow }) =>
     (await BrowserWindow.getAllWindows()[0].capturePage())
@@ -512,10 +518,276 @@ test("keyboard dialogs, find, resizing and canceled quit keep the live page usab
   await shell
     .getByRole("button", { name: "Put aside task", exact: true })
     .click();
-  await app.evaluate(({ BrowserWindow }) =>
-    BrowserWindow.getAllWindows()[0].setContentSize(900, 700),
-  );
+  await shell.setViewportSize({ width: 900, height: 700 });
+  await expect(shell.locator(".sidebar")).toHaveCSS("width", "230px");
   await shell.screenshot({ path: "../design/qa/desktop-shell-narrow.png" });
   await shell.getByRole("button", { name: "Close task context" }).click();
   await expect(website.getByLabel("Amount")).toHaveValue("318.20");
+});
+
+test("dragging tasks between collapsed groups retains live edits and persists the move", async () => {
+  await newTask("Move this work");
+  const website = await navigate(origin + "/");
+  await website.getByLabel("Amount").fill("712");
+  const taskButton = () =>
+    shell.getByRole("button", {
+      name: "Select task Move this work",
+      exact: true,
+    });
+  const later = () =>
+    shell.getByRole("button", { name: "Later tasks", exact: true });
+  const settled = shell.getByRole("button", {
+    name: "Settled tasks",
+    exact: true,
+  });
+  await expect(later()).toHaveAttribute("aria-expanded", "false");
+  await taskButton().dragTo(later());
+  await expect(taskButton()).not.toBeVisible();
+  await later().click();
+  await expect(
+    shell
+      .getByRole("region", { name: "Later tasks", exact: true })
+      .getByRole("button", { name: "Select task Move this work" }),
+  ).toBeVisible();
+  await taskButton().dragTo(settled);
+  await settled.click();
+  await expect(website.getByLabel("Amount")).toHaveValue("712");
+  await taskButton().dragTo(
+    shell.getByRole("region", { name: "Active tasks", exact: true }),
+  );
+  await expect(
+    shell
+      .getByRole("region", { name: "Active tasks", exact: true })
+      .getByRole("button", { name: "Select task Move this work" }),
+  ).toBeVisible();
+  await expect(website.getByLabel("Amount")).toHaveValue("712");
+  await taskButton().dragTo(later());
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBoxSync = () => 1;
+  });
+  await app.close();
+  await launch();
+  await expect(later()).toHaveAttribute("aria-expanded", "false");
+  await later().click();
+  await expect(
+    shell
+      .getByRole("region", { name: "Later tasks", exact: true })
+      .getByRole("button", { name: "Select task Move this work" }),
+  ).toBeVisible();
+});
+
+async function altInput(
+  page: Page,
+  keyCode: string,
+  type: "keyDown" | "keyUp" = "keyDown",
+) {
+  await app.evaluate(
+    ({ webContents }, { url, keyCode, type }) => {
+      const contents = webContents
+        .getAllWebContents()
+        .find((item) => item.getURL() === url)!;
+      contents.focus();
+      contents.sendInputEvent({
+        type,
+        keyCode,
+        modifiers: type === "keyUp" && keyCode === "Alt" ? [] : ["alt"],
+      });
+    },
+    { url: page.url(), keyCode, type },
+  );
+}
+
+test("Alt hints switch tasks and tabs from websites and reveal a collapsed task", async () => {
+  await newTask("First task");
+  const first = await navigate(origin + "/");
+  await first.getByLabel("Amount").fill("42");
+  await shell.getByRole("button", { name: "New page", exact: true }).click();
+  const second = await navigate(origin + "/second");
+  await altInput(second, "Alt");
+  await expect(shell.locator("kbd")).toHaveText(["A", "1", "2"]);
+  await altInput(second, "1");
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toHaveValue(origin + "/");
+  await altInput(shell, "Alt", "keyUp");
+  await expect(shell.locator("kbd")).toHaveCount(0);
+  await expect(first.getByLabel("Amount")).toHaveValue("42");
+  await newTask("Second task");
+  await shell.getByLabel("Task status", { exact: true }).selectOption("Later");
+  await expect(
+    shell.getByRole("button", { name: "Select task Second task" }),
+  ).not.toBeVisible();
+  await altInput(shell, "A");
+  await expect(
+    shell.getByRole("button", { name: "Select task First task" }),
+  ).toHaveAttribute("aria-current", "true");
+  await altInput(first, "B");
+  await expect(
+    shell.getByRole("button", { name: "Later tasks", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await expect(
+    shell.getByRole("button", { name: "Select task Second task" }),
+  ).toHaveAttribute("aria-current", "true");
+  await altInput(shell, "Alt", "keyUp");
+  await shell.getByRole("button", { name: "Rename task" }).click();
+  await altInput(shell, "A");
+  await expect(shell.getByLabel("Task name", { exact: true })).toHaveValue(
+    "Second task",
+  );
+  await shell.getByRole("button", { name: "Cancel", exact: true }).click();
+  await altInput(shell, "Alt", "keyUp");
+});
+
+test("the shell follows theme changes while the address bar stays dark and context starts closed", async () => {
+  await app.close();
+  const themeDirectory = join(profile, "system-theme");
+  await mkdir(join(themeDirectory, "theme"), { recursive: true });
+  const palette = (background: string) =>
+    `background = "${background}"\nforeground = "#e0e4e7"\naccent = "#a4c4b5"\n`;
+  await writeFile(
+    join(themeDirectory, "theme/colors.toml"),
+    palette("#181b1e"),
+  );
+  await writeFile(join(themeDirectory, "theme.name"), "Sample theme");
+  // Launch directly to observe the default state before the common harness opens context.
+  app = await electron.launch({
+    args: ["."],
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      ELECTRON_RUN_AS_NODE: "",
+      TRAILREST_PROFILE: profile,
+      TRAILREST_THEME_DIR: themeDirectory,
+    },
+    chromiumSandbox: true,
+  });
+  shell = await app.firstWindow();
+  await expect(
+    shell.getByRole("heading", { name: "Task context", exact: true }),
+  ).not.toBeVisible();
+  await shell.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(
+    shell.getByRole("heading", { name: "Trailrest settings" }),
+  ).toBeVisible();
+  await expect(shell.getByText(/Theme: Sample theme/)).toBeVisible();
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  await expect(shell.locator(".sidebar")).toHaveCSS(
+    "background-color",
+    "rgb(24, 27, 30)",
+  );
+  await writeFile(
+    join(themeDirectory, "theme/colors.toml"),
+    palette("#eeeedd"),
+  );
+  await expect(shell.locator(".sidebar")).toHaveCSS(
+    "background-color",
+    "rgb(238, 238, 221)",
+  );
+  await expect(shell.locator(".toolbar form")).toHaveCSS(
+    "background-color",
+    "rgb(16, 19, 21)",
+  );
+  const top = await shell.locator(".website").boundingBox();
+  expect(top?.y).toBeCloseTo(56, 1);
+  await writeFile(
+    join(themeDirectory, "theme/colors.toml"),
+    'background = "url(file:///bad)"',
+  );
+  await expect(shell.locator(".sidebar")).toHaveCSS(
+    "background-color",
+    "rgb(24, 27, 30)",
+  );
+});
+
+test("the extensions button loads, remembers and removes an unpacked content script", async () => {
+  const extensionPath = join(profile, "sample-extension");
+  await mkdir(extensionPath);
+  await writeFile(
+    join(extensionPath, "manifest.json"),
+    JSON.stringify({
+      manifest_version: 3,
+      name: "Sample extension",
+      version: "1.0",
+      content_scripts: [
+        { matches: ["http://127.0.0.1/*"], js: ["content.js"] },
+      ],
+    }),
+  );
+  await writeFile(
+    join(extensionPath, "content.js"),
+    'const p = document.createElement("p"); p.textContent = "Extension active"; document.body.append(p);',
+  );
+  await newTask("Extension check");
+  await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await app.evaluate(({ dialog }) => {
+    dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+  });
+  await shell
+    .getByRole("button", { name: "Load unpacked", exact: true })
+    .click();
+  await expect(shell.getByText("No extensions loaded.")).toBeVisible();
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [path],
+    });
+  }, profile);
+  await shell
+    .getByRole("button", { name: "Load unpacked", exact: true })
+    .click();
+  await expect(shell.getByRole("dialog").getByRole("alert")).toContainText(
+    /manifest/i,
+  );
+  await expect(shell.getByText("No extensions loaded.")).toBeVisible();
+  await app.evaluate(({ dialog }, extensionPath) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [extensionPath],
+    });
+  }, extensionPath);
+  await shell
+    .getByRole("button", { name: "Load unpacked", exact: true })
+    .click();
+  await expect(
+    shell.getByRole("button", { name: "Remove Sample extension" }),
+  ).toBeVisible();
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  const website = await navigate(origin + "/");
+  await expect(
+    website.getByText("Extension active", { exact: true }),
+  ).toBeVisible();
+  await website.getByRole("button", { name: "Check isolation" }).click();
+  await expect(website.locator("output")).toHaveText("undefined/undefined");
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBoxSync = () => 1;
+  });
+  await app.close();
+  await launch();
+  await shell.getByRole("button", { name: "Reopen page", exact: true }).click();
+  await expect
+    .poll(() =>
+      app
+        .context()
+        .pages()
+        .some((page) => page.url() === origin + "/"),
+    )
+    .toBe(true);
+  const restored = app
+    .context()
+    .pages()
+    .find((page) => page.url() === origin + "/")!;
+  await expect(
+    restored.getByText("Extension active", { exact: true }),
+  ).toBeVisible();
+  await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByRole("button", { name: "Remove Sample extension" }).click();
+  await expect(shell.getByText("No extensions loaded.")).toBeVisible();
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBoxSync = () => 1;
+  });
+  await shell.getByRole("button", { name: "Reload", exact: true }).click();
+  await expect(
+    restored.getByText("Extension active", { exact: true }),
+  ).not.toBeVisible();
 });

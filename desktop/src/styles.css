@@ -3,9 +3,19 @@
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
 :root {
+  --background: #181b1e;
+  --foreground: #e0e4e7;
+  --accent: #a4c4b5;
+  --surface: color-mix(in srgb, var(--background) 94%, var(--foreground));
+  --raised: color-mix(in srgb, var(--background) 88%, var(--foreground));
+  --hover: color-mix(in srgb, var(--background) 80%, var(--foreground));
+  --border: color-mix(in srgb, var(--background) 75%, var(--foreground));
+  --muted: color-mix(in srgb, var(--background) 25%, var(--foreground));
+  --chrome: color-mix(in srgb, #101315 94%, var(--accent));
+  color-scheme: dark;
   font-family: Inter, Arial, sans-serif;
-  color: #26333b;
-  background: #26292b;
+  color: var(--foreground);
+  background: var(--background);
   font-synthesis: none;
   font-size: 14px;
 }
@@ -36,12 +46,12 @@ button:disabled {
   cursor: default;
 }
 button:hover:not(:disabled) {
-  background: #e7edef;
+  background: var(--hover);
 }
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid #1aa3af;
+  outline: 3px solid var(--accent);
   outline-offset: 2px;
 }
 button,
@@ -63,11 +73,11 @@ textarea {
 .sidebar {
   width: 280px;
   flex-shrink: 0;
-  background: #242829;
-  color: #e8ecee;
+  background: var(--background);
+  color: var(--foreground);
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #414648;
+  border-right: 1px solid var(--border);
 }
 .brand {
   height: 56px;
@@ -75,19 +85,19 @@ textarea {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #2b2e2f;
+  background: var(--surface);
 }
 .brand strong {
   font-size: 19px;
   font-weight: 600;
 }
 .brand svg {
-  color: #bbd1c5;
+  color: var(--accent);
 }
 .task-search {
   margin: 18px 14px 8px;
-  border: 1px solid #4a5256;
-  background: #2f3436;
+  border: 1px solid var(--border);
+  background: var(--surface);
   border-radius: 7px;
   display: flex;
   align-items: center;
@@ -95,7 +105,7 @@ textarea {
   gap: 8px;
 }
 .task-search input {
-  color: #eef0f2;
+  color: var(--foreground);
   background: none;
   border: 0;
   outline-offset: 0;
@@ -103,16 +113,16 @@ textarea {
   font-size: 12px;
 }
 .task-search input::placeholder {
-  color: #afb7bc;
+  color: var(--muted);
 }
 .new-task {
   margin: 0 14px 20px;
   justify-content: flex-start;
-  color: #d4dfe2;
+  color: var(--foreground);
   padding: 8px;
 }
 .sidebar button:hover:not(:disabled) {
-  background: #3a4245;
+  background: var(--hover);
 }
 .sidebar nav {
   overflow: auto;
@@ -128,7 +138,7 @@ textarea {
   text-transform: uppercase;
   display: flex;
   justify-content: space-between;
-  color: #a9b6bc;
+  color: var(--muted);
   padding: 0 12px;
 }
 .task-group h2 span {
@@ -139,8 +149,8 @@ textarea {
   margin: 8px 0;
 }
 .task.selected {
-  background: #303638;
-  box-shadow: inset 0 1px #485055;
+  background: var(--raised);
+  box-shadow: inset 0 1px var(--border);
 }
 .task-heading {
   display: flex;
@@ -166,7 +176,7 @@ textarea {
 .pages button {
   width: 100%;
   font-size: 11px;
-  color: #bfcbd0;
+  color: var(--foreground);
   justify-content: flex-start;
   padding: 7px;
   min-height: 32px;
@@ -181,25 +191,25 @@ textarea {
 .pages i {
   font-style: normal;
   font-size: 9px;
-  color: #a8d2c0;
+  color: var(--accent);
 }
 .pages .chosen {
-  background: #444e52;
-  color: white;
+  background: var(--hover);
+  color: var(--foreground);
 }
 .pages .add-page {
-  color: #aab7bd;
+  color: var(--muted);
   margin-top: 5px;
 }
 .sidebar-foot {
   padding: 10px 12px;
-  border-top: 1px solid #3e4648;
+  border-top: 1px solid var(--border);
 }
 .settings-button {
   width: 100%;
   justify-content: flex-start;
   padding: 10px;
-  color: #cbd8dc;
+  color: var(--foreground);
   font-size: 13px;
 }
 .dialog .settings-option {
@@ -212,7 +222,7 @@ textarea {
   width: 18px;
   height: 18px;
   min-height: 0;
-  accent-color: #0d7883;
+  accent-color: var(--accent);
 }
 
 main {
@@ -220,7 +230,7 @@ main {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: #f6f8f9;
+  background: var(--background);
 }
 .toolbar {
   height: 56px;
@@ -228,8 +238,8 @@ main {
   align-items: center;
   padding: 8px 12px;
   gap: 4px;
-  background: #eef1f3;
-  border-bottom: 1px solid #d3d9dc;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 .toolbar > button {
@@ -241,46 +251,21 @@ main {
   display: flex;
   align-items: center;
   gap: 9px;
-  border: 1px solid #cdd5d9;
+  border: 1px solid var(--border);
   border-radius: 7px;
-  background: #fff;
+  background: var(--background);
   flex: 1;
   min-width: 0;
   padding: 0 12px;
-  color: #5f717a;
+  color: var(--muted);
 }
 .toolbar input {
   border: 0;
   flex: 1;
   background: none;
-  color: #26333b;
+  color: var(--foreground);
   font-size: 12px;
   width: 100%;
-}
-.taskbar {
-  height: 86px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 23px;
-  border-bottom: 1px solid #d7dddf;
-  gap: 12px;
-}
-.taskbar small {
-  font-size: 10px;
-  letter-spacing: 1.2px;
-  color: #6d7d84;
-  text-transform: uppercase;
-}
-.taskbar h1 {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 6px 0 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 42vw;
 }
 .task-actions {
   display: flex;
@@ -292,12 +277,13 @@ main {
   height: 32px;
   min-height: 32px;
   padding: 0;
-  color: #cbd8dc;
+  color: var(--foreground);
 }
 .task-actions button:hover {
-  color: white;
+  color: var(--foreground);
 }
 .content {
+  position: relative;
   flex: 1;
   display: flex;
   min-height: 0;
@@ -306,13 +292,13 @@ main {
   flex: 1;
   min-width: 0;
   position: relative;
-  background: #fff;
+  background: var(--background);
 }
 .context {
   width: 300px;
   flex-shrink: 0;
-  background: #f5f7f9;
-  border-left: 1px solid #d4dbdf;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
   padding: 22px;
   display: flex;
   flex-direction: column;
@@ -338,7 +324,7 @@ main {
 .eyebrow {
   font-size: 10px;
   letter-spacing: 1px;
-  color: #657985;
+  color: var(--muted);
   margin: 30px 0 10px;
 }
 .note {
@@ -350,31 +336,31 @@ main {
 }
 .rule {
   height: 1px;
-  background: #d6dfe4;
+  background: var(--border);
   flex-shrink: 0;
 }
 .muted {
   font-size: 12px;
   line-height: 1.7;
-  color: #5a6e7b;
+  color: var(--muted);
   margin: 0;
 }
 .attention {
-  border: 1px solid #e5ce93;
+  border: 1px solid var(--border);
   border-radius: 7px;
-  background: #fff8e8;
+  background: var(--raised);
   margin: 25px 0;
   padding: 13px;
 }
 .attention span {
   font-size: 12px;
   font-weight: 600;
-  color: #74551f;
+  color: var(--muted);
 }
 .attention p {
   font-size: 11px;
   line-height: 1.7;
-  color: #756345;
+  color: var(--muted);
   margin: 8px 0 0;
 }
 .context-bottom {
@@ -382,7 +368,7 @@ main {
   padding-top: 28px;
   font-size: 10px;
   line-height: 1.7;
-  color: #657682;
+  color: var(--muted);
 }
 .empty {
   height: 100%;
@@ -392,25 +378,25 @@ main {
   flex-direction: column;
   padding: 50px;
   text-align: center;
-  color: #59756d;
-  background: radial-gradient(ellipse at 50% 40%, #f0f5f0, white 65%);
+  color: var(--muted);
+  background: var(--background);
 }
 .empty h2 {
   font-size: 26px;
   font-weight: 500;
-  color: #344844;
+  color: var(--foreground);
   line-height: 1.35;
   margin: 22px 0 8px;
 }
 .empty p {
   max-width: 360px;
-  color: #63766f;
+  color: var(--muted);
   line-height: 1.85;
   font-size: 13px;
 }
 .primary {
-  background: #0d7883 !important;
-  color: white !important;
+  background: var(--foreground) !important;
+  color: var(--background) !important;
   padding: 10px 18px;
 }
 .empty button {
@@ -420,9 +406,9 @@ main {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: #fff2d4;
-  color: #634b24;
-  border-bottom: 1px solid #dfcda6;
+  background: var(--raised);
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
   padding: 8px 18px;
   font-size: 12px;
   flex-shrink: 0;
@@ -436,8 +422,8 @@ main {
   z-index: 10;
 }
 .dialog {
-  background: #f9fafb;
-  border: 1px solid #c9d3d9;
+  background: var(--surface);
+  border: 1px solid var(--border);
   box-shadow: 0 20px 90px #101b2240;
   border-radius: 12px;
   width: 460px;
@@ -450,7 +436,7 @@ main {
 }
 .dialog p {
   font-size: 13px;
-  color: #63747e;
+  color: var(--muted);
   line-height: 1.7;
 }
 .dialog label {
@@ -462,11 +448,11 @@ main {
 }
 .dialog input,
 .dialog textarea {
-  border: 1px solid #aebfc7;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: white;
+  background: var(--background);
   padding: 12px;
-  color: #253d49;
+  color: var(--foreground);
 }
 .dialog footer {
   display: flex;
@@ -485,9 +471,6 @@ main {
     width: 260px;
     padding: 18px;
   }
-  .taskbar {
-    padding: 16px;
-  }
   .empty {
     padding: 25px;
   }
@@ -496,7 +479,7 @@ main {
   }
 }
 dialog.dialog {
-  color: #26333b;
+  color: var(--foreground);
 }
 dialog.dialog::backdrop {
   background: #101b2270;
@@ -512,7 +495,7 @@ dialog:not([open]) {
 .dialog small {
   display: block;
   font-size: 10px;
-  color: #697e89;
+  color: var(--muted);
   margin-top: 8px;
 }
 .findbar {
@@ -520,11 +503,11 @@ dialog:not([open]) {
   justify-content: flex-end;
   padding: 8px 16px;
   gap: 5px;
-  border-bottom: 1px solid #d1dbe0;
-  background: #eef3f5;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
 }
 .findbar input {
-  border: 1px solid #abbfc7;
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 5px 10px;
 }
@@ -534,15 +517,9 @@ dialog:not([open]) {
 }
 .downloads small {
   display: block;
-  color: #677e88;
+  color: var(--muted);
   font-size: 11px;
   margin-top: 4px;
-}
-.taskbar > div:first-child {
-  min-width: 0;
-}
-.taskbar h1 {
-  max-width: 100%;
 }
 @media (max-width: 800px) {
   .sidebar {
@@ -554,24 +531,13 @@ dialog:not([open]) {
   .task-title {
     font-size: 12px;
   }
-  .taskbar {
-    height: 86px;
-    display: block;
-    padding: 12px 14px;
-  }
-  .taskbar h1 {
-    font-size: 16px;
-  }
   .context {
     position: absolute;
     right: 0;
     bottom: 0;
-    top: 142px;
-    width: calc(100% - 190px);
+    top: 0;
+    width: 100%;
     z-index: 2;
-  }
-  .findbar ~ .content .context {
-    top: 192px;
   }
   .toolbar {
     padding: 8px 4px;
@@ -590,4 +556,120 @@ dialog:not([open]) {
   .empty {
     padding: 20px;
   }
+}
+
+.toolbar {
+  background: var(--chrome);
+  color: #dfe3e5;
+}
+.toolbar form {
+  background: #101315;
+  border-color: #3c4247;
+  color: #b8c0c5;
+}
+.toolbar input {
+  color: #e2e6e8;
+}
+.toolbar input::placeholder {
+  color: #a2aaae;
+}
+.toolbar button:hover:not(:disabled) {
+  background: #34393d;
+}
+.group-toggle {
+  width: 100%;
+  justify-content: flex-start;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.group-toggle span {
+  margin-left: auto;
+}
+.group-toggle .expanded {
+  transform: rotate(90deg);
+}
+.task-group {
+  min-height: 38px;
+  border: 1px solid transparent;
+  margin-bottom: 12px;
+  border-radius: 8px;
+}
+.task-group.drop-target {
+  border-color: var(--accent);
+  background: var(--raised);
+}
+.drop-label {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--foreground);
+}
+kbd {
+  display: inline-grid;
+  place-items: center;
+  background: var(--foreground);
+  color: var(--background);
+  border-radius: 4px;
+  min-width: 18px;
+  height: 20px;
+  font:
+    600 11px Inter,
+    sans-serif;
+  flex-shrink: 0;
+}
+.shortcut-help {
+  font-size: 10px;
+  color: var(--muted);
+}
+.context-description {
+  margin-top: 16px;
+}
+.task-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  margin-top: 20px;
+}
+select {
+  font: inherit;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--foreground);
+  background: var(--raised);
+  padding: 7px;
+}
+select:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.dialog {
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+}
+.extension-list {
+  max-height: 240px;
+  overflow: auto;
+}
+.extension {
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: 7px;
+  margin: 12px 0;
+}
+.extension-path {
+  overflow-wrap: anywhere;
+}
+.extension button {
+  background: var(--raised);
+  padding: 6px 12px;
+}
+.task-title {
+  touch-action: none;
+  user-select: none;
+}
+.dragging-task,
+.dragging-task button {
+  cursor: grabbing;
 }

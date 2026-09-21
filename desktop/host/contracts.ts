@@ -26,6 +26,19 @@ export type Workspace = {
   selectedTaskId: string | null;
 };
 export type Snapshot = Omit<Workspace, "pages"> & {
+  theme: {
+    name: string;
+    background: string;
+    foreground: string;
+    accent: string;
+  };
+  extensions: {
+    id: string;
+    name: string;
+    version: string;
+    path: string;
+    error: string;
+  }[];
   pages: PageState[];
   notice: string;
   storageError: string;
@@ -35,6 +48,9 @@ export type Command =
   | { type: "createTask"; title: string }
   | { type: "selectTask"; id: string }
   | { type: "renameTask"; id: string; title: string }
+  | { type: "moveTask"; id: string; lifecycle: Lifecycle }
+  | { type: "loadExtension" }
+  | { type: "removeExtension"; path: string }
   | { type: "selectPage"; id: string }
   | { type: "navigate"; address: string }
   | { type: "newPage" }
