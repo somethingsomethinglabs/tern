@@ -4,3 +4,6 @@ dist/
 .env.*
 !.env.example
 .DS_Store
+prototype/test-results/
+prototype/playwright-report/
+prototype/.vite/
