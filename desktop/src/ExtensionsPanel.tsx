@@ -63,9 +63,9 @@ export function ExtensionsPanel({
         </button>
       </div>
       <p>
-        Only load extensions you trust. Some Chrome APIs and extension toolbar
-        popups are unsupported. Importing a package does not guarantee it will
-        work.
+        Open an installed extension to sign in or use its tools. Some Chrome
+        APIs remain unsupported; importing a package does not guarantee
+        compatibility.
       </p>
       {busy && <p role="status">Working…</p>}
       {!busy && notice.startsWith("Extension package downloaded") && (
@@ -79,6 +79,17 @@ export function ExtensionsPanel({
               <small>{extension.version}</small>
               <p className="extension-path">{extension.path}</p>
               {extension.error && <p role="alert">{extension.error}</p>}
+              {extension.canOpen && (
+                <button
+                  disabled={busy}
+                  onClick={async () => {
+                    if (await send({ type: "openExtension", id: extension.id }))
+                      close();
+                  }}
+                >
+                  Open {extension.name}
+                </button>
+              )}
               <button
                 disabled={busy}
                 onClick={() =>

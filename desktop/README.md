@@ -33,7 +33,9 @@ Settings is a full browser page with persisted search-engine selection, default 
 
 The top-right puzzle button opens Extensions. Paste a Chrome Web Store link or ID and choose Download package to save its CRX from Google's service. Then use Import package to review and load a ZIP/CRX. A developer-supplied package works through the same flow, and Load unpacked remains available for folders. Imports validate archive paths and size limits, show manifest details and ask before loading. Publisher signatures are not verified; an imported package is treated as unpacked code. Imported files are kept under the profile's `imported-extensions` directory. Removing an extension unloads it and removes its registration; its imported files remain on disk.
 
-Registrations are remembered in `extensions.json`. Extensions run only in the website session. Changes apply to newly loaded pages; reloading existing pages can lose unsaved edits. Some Chrome APIs and extension toolbar popups remain unsupported. Chrome's Add to Chrome button is not connected to Trailrest, and downloading a package does not guarantee compatibility. See [Electron's supported extension APIs](https://www.electronjs.org/docs/latest/api/extensions).
+Registrations are remembered in `extensions.json`. Extensions run only in the website session. Changes apply to newly loaded pages; reloading existing pages can lose unsaved edits. Installed extensions with a popup have an Open button and a toolbar initial. Browser API support now includes tab tracking, popup windows, navigation events and manifest shortcuts; some Chrome APIs remain unsupported. Chrome's Add to Chrome button is not connected to Trailrest, and downloading a package does not guarantee compatibility. See [Electron's supported extension APIs](https://www.electronjs.org/docs/latest/api/extensions).
+
+For Bitwarden, use the **B** toolbar button or **Ctrl+Shift+U**, then sign in inside the extension. **Ctrl+Shift+L** requests autofill on the selected page. See [Bitwarden compatibility and verification limits](../docs/bitwarden-compatibility.md).
 
 ## Keyboard
 
@@ -65,7 +67,7 @@ After packaging, `node scripts/visual-check.mjs` performs the optional native sc
 
 ## Current limits
 
-This is a local alpha. It has no assistant service, full Chrome extension compatibility, sync, password manager, profile import, private browsing, or automatic engine updates. Website permission requests, including camera, microphone, location, notifications and clipboard permissions, are denied with a message. Unsupported external schemes are blocked. Some sign-in and payment flows may depend on capabilities this build does not provide. Downloads use your location preference and never execute the saved file.
+This is a local alpha. It has no assistant service, full Chrome extension compatibility, sync, built-in password manager, profile import, private browsing, or automatic engine updates. Website permission requests, including camera, microphone, location, notifications and clipboard permissions, are denied with a message. Installed extensions may use declared clipboard permissions in their own windows. Unsupported external schemes are blocked. Some sign-in and payment flows may depend on capabilities this build does not provide. Downloads use your location preference and never execute the saved file.
 
 Remote pages have no Node access or exposed Trailrest bridge. A sandboxed, isolated preload observes only scroll positions for toolbar visibility; it sends no website content. The shell uses a dedicated local protocol and session, and the main process validates command senders and arguments. Electron is pinned to 44.4.3. Before wider distribution, update Electron regularly and expand compatibility and security testing. The UI checks here establish the tested workflows, not a general security certification.
 

@@ -65,3 +65,7 @@ A repeated UI failure exposed a window-resize race: a cached narrow-window value
 The packaged Linux app was launched with a fresh profile and checked visually. Its archive includes the guest scroll observer and the runtime ZIP dependency. See [settings](../design/qa/desktop-settings-shell.png), [editable notes](../design/qa/desktop-notes-shell.png), [collapsed sidebar](../design/qa/desktop-sidebar-collapsed.png), [collapsed toolbar](../design/qa/desktop-toolbar-collapsed.png), and [extension controls](../design/qa/desktop-extensions.png). Shell captures omit native website pixels; native captures include the website but have desktop notifications from the intentional renderer-crash test over part of their upper-right corner.
 
 The existing launcher package was updated without closing the user's running browser. Quit and reopen Trailrest to use the changes. Human resumption evaluation and compatibility testing with the user's preferred extensions remain outstanding.
+
+## Bitwarden follow-up
+
+The subsequent [Bitwarden integration](bitwarden-compatibility.md) adds popup windows, tab/navigation APIs, extension commands and context reporting. The earlier statement that toolbar popups are absent describes the review baseline. Full Chrome compatibility and authenticated Bitwarden workflows remain unverified; see the follow-up for the exact checks and first-run timing limitation.

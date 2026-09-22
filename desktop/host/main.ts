@@ -33,6 +33,7 @@ import type {
 import { WorkspaceFile } from "./workspace-file.js";
 import { readTheme } from "./theme.js";
 import { ExtensionLibrary } from "./extensions.js";
+import { ExtensionBrowser } from "./extension-browser.js";
 
 app.setName("Trailrest");
 if (process.env.TRAILREST_PROFILE)
@@ -62,6 +63,7 @@ const errors = new Map<string, string>();
 let window: BrowserWindow;
 let guests: Session;
 let extensions: ExtensionLibrary;
+let extensionBrowser: ExtensionBrowser;
 let theme = readTheme();
 let notice = "";
 let quitting = false;
@@ -92,7 +94,10 @@ function snapshot(): Snapshot {
     ...workspace,
     preferences: preferences.value,
     theme,
-    extensions: extensions?.list() ?? [],
+    extensions: (extensions?.list() ?? []).map((extension) => ({
+      ...extension,
+      canOpen: extensionBrowser?.canOpen(extension.id) ?? false,
+    })),
     notice,
     storageError: storage.error || preferences.error,
     downloads,
@@ -115,6 +120,7 @@ function publish() {
 }
 function layout() {
   if (!window || window.isDestroyed()) return;
+  extensionBrowser?.selectPage(currentContents());
   const [width, height] = window.getContentSize();
   for (const [id, view] of views) {
     const visible =
@@ -204,6 +210,7 @@ function showPage(
   views.set(page.id, view);
   window.contentView.addChildView(view);
   const contents = view.webContents;
+  extensionBrowser.addPage(contents);
   contents.setZoomFactor(preferences.value.defaultZoom);
   contents.on("did-finish-load", () =>
     contents.setZoomFactor(preferences.value.defaultZoom),
@@ -340,6 +347,16 @@ function keyboard(event: Electron.Event, input: Electron.Input) {
       : "hints:off",
   );
   if (input.type !== "keyDown") return;
+  try {
+    if (extensionBrowser?.handleShortcut(input)) {
+      event.preventDefault();
+      return;
+    }
+  } catch (error) {
+    notice = String(error);
+    publish();
+    return;
+  }
   if (alt && /^[a-z0-9]$/.test(key)) {
     event.preventDefault();
     window.webContents.focus();
@@ -348,6 +365,7 @@ function keyboard(event: Electron.Event, input: Electron.Input) {
   }
   if (
     (input.control || input.meta) &&
+    !input.shift &&
     ["l", "t", "f", "w", "r"].includes(key)
   ) {
     event.preventDefault();
@@ -442,7 +460,7 @@ async function command(raw: unknown) {
         const response = await dialog.showMessageBox(window, {
           type: "question",
           message: "Load " + extension.name + "?",
-          detail: `Version ${extension.version}\nPermissions: ${extension.permissions}\n\nThis imports unpacked code. Trailrest does not verify the package's publisher signature. Extensions can read and change websites; some Chrome APIs and toolbar popups are unsupported.`,
+          detail: `Version ${extension.version}\nPermissions: ${extension.permissions}\n\nThis imports unpacked code. Trailrest does not verify the package's publisher signature. Extensions can read and change websites; some Chrome APIs and browser integrations remain unsupported.`,
           buttons: ["Cancel", "Load extension"],
           defaultId: 0,
           cancelId: 0,
@@ -532,6 +550,9 @@ async function command(raw: unknown) {
     }
     case "removeExtension":
       extensions.remove(text(value.path, 8192));
+      break;
+    case "openExtension":
+      extensionBrowser.open(text(value.id, 100));
       break;
     case "moveTask": {
       const task = workspace.tasks.find(
@@ -715,16 +736,31 @@ async function start() {
   await app.whenReady();
   guests = session.fromPartition("persist:trailrest-web");
   extensions = new ExtensionLibrary(guests, app.getPath("userData"));
-  guests.setPermissionRequestHandler((contents, permission, callback) => {
-    callback(false);
-    let origin = "This website";
-    try {
-      origin = new URL(contents.getURL()).origin;
-    } catch {}
-    notice = `${origin} requested ${permission}. Website permissions are disabled in this build.`;
-    publish();
-  });
-  guests.setPermissionCheckHandler(() => false);
+  guests.setPermissionRequestHandler(
+    (contents, permission, callback, details) => {
+      if (
+        extensionBrowser?.allowsClipboard(
+          contents,
+          permission,
+          details.requestingUrl || contents.getURL(),
+        )
+      ) {
+        callback(true);
+        return;
+      }
+      callback(false);
+      let origin = "This website";
+      try {
+        origin = new URL(contents.getURL()).origin;
+      } catch {}
+      notice = `${origin} requested ${permission}. Website permissions are disabled in this build.`;
+      publish();
+    },
+  );
+  guests.setPermissionCheckHandler(
+    (contents, permission, origin) =>
+      extensionBrowser?.allowsClipboard(contents, permission, origin) ?? false,
+  );
   guests.on("will-download", (_event, item) => {
     const download = {
       id: randomUUID(),
@@ -879,6 +915,63 @@ async function start() {
       if (!view.webContents.isDestroyed()) view.webContents.close();
   });
   app.on("window-all-closed", () => app.quit());
+  extensionBrowser = new ExtensionBrowser(guests, window, {
+    create(url, active) {
+      if (url !== "about:blank" && !isWebURL(url))
+        throw new Error("Only HTTP and HTTPS pages can be opened.");
+      if (views.size >= 100)
+        throw new Error("Close a page before opening another.");
+      if (!selectedTask()) {
+        const id = randomUUID();
+        workspace.tasks.push({
+          id,
+          title: "Browsing",
+          lifecycle: "Active",
+          note: "",
+          selectedPageId: null,
+        });
+        workspace.selectedTaskId = id;
+      }
+      const task = selectedTask()!;
+      const previous = task.selectedPageId;
+      const page = newPage(task.id, url === "about:blank" ? "" : url);
+      if (!active) task.selectedPageId = previous;
+      const contents = showPage(page);
+      storage.save(workspace);
+      return contents;
+    },
+    select(contents) {
+      const page = workspace.pages.find(
+        (page) => views.get(page.id)?.webContents === contents,
+      );
+      if (!page) {
+        BrowserWindow.fromWebContents(contents)?.focus();
+        return;
+      }
+      workspace.selectedTaskId = page.taskId;
+      selectedTask()!.selectedPageId = page.id;
+      storage.save(workspace);
+      publish();
+      layout();
+    },
+    close(contents) {
+      if (contents.isDestroyed()) return;
+      if (
+        confirm(
+          "Close this page?",
+          "An extension requested closing this page. Unsaved website changes may be lost.",
+          "Close page",
+        )
+      )
+        contents.close({ waitForBeforeUnload: true });
+      // The library removes its registration before asking the host to close.
+      if (!contents.isDestroyed()) extensionBrowser.addPage(contents);
+    },
+    error(message) {
+      notice = message;
+      publish();
+    },
+  });
   // Install permission/download handlers and create the window before running
   // any remembered extension background scripts.
   try {

@@ -625,6 +625,22 @@ function App() {
           >
             <PuzzlePiece size={21} />
           </button>
+          {state?.extensions
+            .filter((extension) => extension.canOpen)
+            .map((extension) => (
+              <button
+                key={extension.id}
+                aria-label={`Open ${extension.name}`}
+                title={`Open ${extension.name}`}
+                onClick={() =>
+                  void send({ type: "openExtension", id: extension.id })
+                }
+              >
+                <span className="extension-initial">
+                  {extension.name.slice(0, 1)}
+                </span>
+              </button>
+            ))}
         </div>
         {finding && (
           <form

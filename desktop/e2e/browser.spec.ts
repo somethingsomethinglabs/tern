@@ -257,9 +257,13 @@ test.afterEach(async () => {
 });
 // CDP keyboard events bypass Electron's native before-input-event hook.
 // Send native input at the window boundary to exercise browser accelerators.
-async function nativeShortcut(page: Page, keyCode: string) {
+async function nativeShortcut(
+  page: Page,
+  keyCode: string,
+  modifiers: string[] = ["control"],
+) {
   await app.evaluate(
-    ({ webContents }, { url, keyCode }) => {
+    ({ webContents }, { url, keyCode, modifiers }) => {
       const contents = webContents
         .getAllWebContents()
         .find((item) => item.getURL() === url)!;
@@ -267,21 +271,28 @@ async function nativeShortcut(page: Page, keyCode: string) {
       contents.sendInputEvent({
         type: "keyDown",
         keyCode,
-        modifiers: ["control"],
+        modifiers,
       });
       contents.sendInputEvent({
         type: "keyUp",
         keyCode,
-        modifiers: ["control"],
+        modifiers,
       });
     },
-    { url: page.url(), keyCode },
+    { url: page.url(), keyCode, modifiers },
   );
 }
 async function newTask(name: string) {
   await shell.getByRole("button", { name: "New task", exact: true }).click();
   await shell.getByLabel("Task name", { exact: true }).fill(name);
   await shell.getByRole("button", { name: "Create task", exact: true }).click();
+  await expect(shell.getByRole("dialog")).not.toBeVisible();
+  await expect(
+    shell.getByRole("button", { name: `Select task ${name}`, exact: true }),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toHaveValue("");
 }
 async function navigate(url: string) {
   await shell.getByRole("textbox", { name: "Address or search" }).fill(url);
@@ -545,7 +556,17 @@ test("keyboard dialogs, find, resizing and canceled quit keep the live page usab
     .getByRole("button", { name: "Put aside task", exact: true })
     .click();
   await shell.setViewportSize({ width: 900, height: 700 });
-  await expect(shell.locator(".sidebar")).toHaveCSS("width", "230px");
+  await expect
+    .poll(async () =>
+      Math.abs(
+        parseFloat(
+          await shell
+            .locator(".sidebar")
+            .evaluate((element) => getComputedStyle(element).width),
+        ) - 230,
+      ),
+    )
+    .toBeLessThan(0.1);
   await shell.screenshot({ path: "../design/qa/desktop-shell-narrow.png" });
   await shell.getByRole("button", { name: "Close task notes" }).click();
   await expect(website.getByLabel("Amount")).toHaveValue("318.20");
@@ -628,6 +649,9 @@ test("Alt hints switch tasks and tabs from websites and reveal a collapsed task"
   const first = await navigate(origin + "/");
   await first.getByLabel("Amount").fill("42");
   await shell.getByRole("button", { name: "New page", exact: true }).click();
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toHaveValue("");
   const second = await navigate(origin + "/second");
   await altInput(second, "Alt");
   await expect(shell.locator("kbd")).toHaveText(["A", "1", "2"]);
@@ -837,7 +861,17 @@ test("browser settings persist and change search, zoom, downloads and sidebar", 
   await shell.getByLabel("Ask where to save each file").uncheck();
   await shell.getByRole("button", { name: "Back to browsing" }).click();
   await shell.getByRole("button", { name: "Collapse sidebar" }).click();
-  await expect(shell.locator(".sidebar")).toHaveCSS("width", "52px");
+  await expect
+    .poll(async () =>
+      Math.abs(
+        parseFloat(
+          await shell
+            .locator(".sidebar")
+            .evaluate((element) => getComputedStyle(element).width),
+        ) - 52,
+      ),
+    )
+    .toBeLessThan(0.1);
   await app.close();
   await launch();
   await expect(
@@ -1058,4 +1092,143 @@ test("Store links download a package through the UI and invalid links are reject
       exact: true,
     }),
   ).toBeVisible();
+});
+
+test("extension popups and worker shortcuts fill only the selected live page", async () => {
+  const extensionPath = join(profile, "vault-fixture");
+  await mkdir(extensionPath);
+  await writeFile(
+    join(extensionPath, "manifest.json"),
+    JSON.stringify({
+      manifest_version: 3,
+      name: "Vault fixture",
+      version: "1.0",
+      permissions: ["tabs", "storage", "webNavigation"],
+      host_permissions: ["http://127.0.0.1/*"],
+      action: { default_popup: "popup.html" },
+      background: { service_worker: "background.js" },
+      commands: {
+        _execute_action: { suggested_key: { linux: "Ctrl+Shift+U" } },
+        autofill_login: {
+          suggested_key: { default: "Ctrl+Shift+L" },
+          description: "Fill sample",
+        },
+      },
+      content_scripts: [
+        { matches: ["http://127.0.0.1/*"], js: ["content.js"] },
+      ],
+    }),
+  );
+  await writeFile(
+    join(extensionPath, "background.js"),
+    `
+    chrome.webNavigation.onCommitted.addListener(() => {});
+    async function fill() {
+      const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+      await chrome.tabs.sendMessage(tab.id,{fill:true});
+    }
+    chrome.runtime.onMessage.addListener((message,sender,respond) => {
+      if(message.fill) { fill().then(()=>respond('Filled')); return true; }
+    });
+    chrome.commands.onCommand.addListener(name => { if(name==='autofill_login') void fill(); });
+  `,
+  );
+  await writeFile(
+    join(extensionPath, "content.js"),
+    `
+    chrome.runtime.onMessage.addListener((message,sender,respond) => {
+      if(message.fill) { document.querySelector('input').value='42.50'; respond(true); }
+    });
+  `,
+  );
+  await writeFile(
+    join(extensionPath, "popup.html"),
+    '<title>Vault fixture</title><h1>Vault fixture</h1><p id="page"></p><p id="context"></p><button>Fill current page</button><output></output><script src="popup.js"></script>',
+  );
+  await writeFile(
+    join(extensionPath, "popup.js"),
+    `
+    chrome.tabs.query({active:true,currentWindow:true}).then(([tab])=>document.querySelector('#page').textContent=tab.url);
+    chrome.runtime.getContexts({contextTypes:['POPUP']}).then(contexts=>document.querySelector('#context').textContent=contexts.length===1 && contexts[0].documentUrl.startsWith(chrome.runtime.getURL('/'))?'Own popup found':'Wrong context');
+    document.querySelector('button').onclick=()=>chrome.runtime.sendMessage({fill:true}).then(result=>document.querySelector('output').textContent=result);
+  `,
+  );
+  await newTask("First login");
+  await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [path],
+    });
+  }, extensionPath);
+  await shell
+    .getByRole("button", { name: "Load unpacked", exact: true })
+    .click();
+  await expect(
+    shell.getByRole("button", { name: "Remove Vault fixture" }),
+  ).toBeVisible();
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  const first = await navigate(origin + "/");
+  await first.getByLabel("Amount").fill("Untouched");
+  await newTask("Second login");
+  const second = await navigate(origin + "/second");
+  await expect(
+    second.getByRole("heading", { name: "Second page" }),
+  ).toBeVisible();
+  let opened = app.waitForEvent("window");
+  await shell
+    .getByRole("button", { name: "Open Vault fixture", exact: true })
+    .click();
+  let popup = await opened;
+  await expect(popup.locator("#page")).toHaveText(origin + "/second");
+  await expect(popup.locator("#context")).toHaveText("Own popup found");
+  await popup.getByRole("button", { name: "Fill current page" }).click();
+  await expect(popup.locator("output")).toHaveText("Filled");
+  await expect(second.getByLabel("Amount")).toHaveValue("42.50");
+  await expect(first.getByLabel("Amount")).toHaveValue("Untouched");
+  await nativeShortcut(popup, "Escape", []);
+  await shell
+    .getByRole("button", { name: "Select task First login", exact: true })
+    .click();
+  await app.evaluate(({ webContents }, url) => {
+    const contents = webContents
+      .getAllWebContents()
+      .find((item) => item.getURL() === url)!;
+    contents.focus();
+    contents.sendInputEvent({
+      type: "keyDown",
+      keyCode: "L",
+      modifiers: ["control", "shift"],
+    });
+    contents.sendInputEvent({
+      type: "keyUp",
+      keyCode: "L",
+      modifiers: ["control", "shift"],
+    });
+  }, origin + "/");
+  await expect(first.getByLabel("Amount")).toHaveValue("42.50");
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).not.toBeFocused();
+  opened = app.waitForEvent("window");
+  await app.evaluate(({ webContents }, url) => {
+    const contents = webContents
+      .getAllWebContents()
+      .find((item) => item.getURL() === url)!;
+    contents.sendInputEvent({
+      type: "keyDown",
+      keyCode: "U",
+      modifiers: ["control", "shift"],
+    });
+    contents.sendInputEvent({
+      type: "keyUp",
+      keyCode: "U",
+      modifiers: ["control", "shift"],
+    });
+  }, origin + "/");
+  popup = await opened;
+  await expect(popup.locator("#page")).toHaveText(origin + "/");
+  await nativeShortcut(popup, "Escape", []);
+  await first.getByRole("button", { name: "Check isolation" }).click();
+  await expect(first.locator("output")).toHaveText("undefined/undefined");
 });

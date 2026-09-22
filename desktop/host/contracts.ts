@@ -47,6 +47,7 @@ export type Snapshot = Omit<Workspace, "pages"> & {
     version: string;
     path: string;
     error: string;
+    canOpen?: boolean;
   }[];
   pages: PageState[];
   notice: string;
@@ -67,6 +68,7 @@ export type Command =
   | { type: "downloadExtension"; source: string }
   | { type: "loadExtension" }
   | { type: "removeExtension"; path: string }
+  | { type: "openExtension"; id: string }
   | { type: "selectPage"; id: string }
   | { type: "navigate"; address: string }
   | { type: "newPage" }
