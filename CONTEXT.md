@@ -1,6 +1,6 @@
-# Trailrest
+# Tern
 
-Trailrest is a browser organized around unfinished work. Users put a task aside with a short note and resume its pages when ready. Task lifecycle and website save state are separate facts.
+Tern is a browser organized around unfinished work. Users put a task aside with a short note and resume its pages when ready. Task lifecycle and website save state are separate facts.
 
 ## Glossary
 

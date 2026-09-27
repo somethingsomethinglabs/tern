@@ -1,5 +1,6 @@
 const { ipcRenderer } = require("electron");
-// Isolated-world observer only. Exposes no API to websites and sends no content.
+installLinkPreloading(ipcRenderer);
+// Isolated-world scroll observer. Exposes no API to websites or page text to the host.
 const positions = new WeakMap();
 let pending;
 let scheduled = false;

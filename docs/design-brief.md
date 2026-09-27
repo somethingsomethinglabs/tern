@@ -1,4 +1,4 @@
-# Trailrest design brief
+# Tern design brief
 
 Selected by the user on 21 September 2026: option three, "Settle & Resume". The [original mockup](../design/settle-and-resume.png) remains unchanged, including its original concept label.
 

@@ -8,7 +8,7 @@ import {
 } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
 import type { Session } from "electron";
-import type { Snapshot } from "./contracts.js";
+import type { Snapshot } from "@tern/core/contracts";
 
 // Only extensions explicitly selected in the native folder picker are registered.
 // They run in the website session, never the privileged shell session.

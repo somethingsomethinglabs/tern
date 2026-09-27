@@ -35,7 +35,7 @@ Electron supports only a subset of Chrome extension APIs and loads unpacked dire
 
 The new flow accepts a Store link or extension ID, downloads its CRX from Google's extension-update service to a location the user chooses, and lets the user import that package. ZIP/CRX files supplied by a developer can also be imported. Packages are inspected for unsafe paths, symlinks, duplicate entries and size limits, then presented with their manifest name/version/declared permissions before loading. Import treats the result as unpacked code; it does not verify the publisher signature or establish Chrome Web Store trust. Loaded extensions use the website session, never the shell session. Some extensions will still fail because they require unsupported APIs, actions, or browser integration.
 
-The download URL format was checked against the maintained MIT-licensed [electron-chrome-web-store installer](https://github.com/samuelmaddock/electron-browser-shell/tree/master/packages/electron-chrome-web-store). A temporary download from Google's service returned a valid React Developer Tools 8.0.0 CRX; its manifest was read without installing or executing it. This verifies package delivery, not that the extension's features work in Trailrest.
+The download URL format was checked against the maintained MIT-licensed [electron-chrome-web-store installer](https://github.com/samuelmaddock/electron-browser-shell/tree/master/packages/electron-chrome-web-store). A temporary download from Google's service returned a valid React Developer Tools 8.0.0 CRX; its manifest was read without installing or executing it. This verifies package delivery, not that the extension's features work in Tern.
 
 ## Standards review
 
@@ -64,7 +64,7 @@ A repeated UI failure exposed a window-resize race: a cached narrow-window value
 
 The packaged Linux app was launched with a fresh profile and checked visually. Its archive includes the guest scroll observer and the runtime ZIP dependency. See [settings](../design/qa/desktop-settings-shell.png), [editable notes](../design/qa/desktop-notes-shell.png), [collapsed sidebar](../design/qa/desktop-sidebar-collapsed.png), [collapsed toolbar](../design/qa/desktop-toolbar-collapsed.png), and [extension controls](../design/qa/desktop-extensions.png). Shell captures omit native website pixels; native captures include the website but have desktop notifications from the intentional renderer-crash test over part of their upper-right corner.
 
-The existing launcher package was updated without closing the user's running browser. Quit and reopen Trailrest to use the changes. Human resumption evaluation and compatibility testing with the user's preferred extensions remain outstanding.
+The existing launcher package was updated without closing the user's running browser. Quit and reopen Tern to use the changes. Human resumption evaluation and compatibility testing with the user's preferred extensions remain outstanding.
 
 ## Bitwarden follow-up
 

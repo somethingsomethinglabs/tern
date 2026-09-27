@@ -12,7 +12,7 @@ const manifest = JSON.parse(
 );
 if (manifest.short_name !== "Bitwarden")
   throw new Error("Expected a Bitwarden package.");
-const profile = await mkdtemp(join(tmpdir(), "trailrest-bitwarden-check-"));
+const profile = await mkdtemp(join(tmpdir(), "tern-bitwarden-check-"));
 await writeFile(
   join(profile, "extensions.json"),
   JSON.stringify([extensionPath]),
@@ -24,13 +24,13 @@ const server = createServer((_request, response) => {
   );
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const env = { ...process.env, TRAILREST_PROFILE: profile };
+const env = { ...process.env, TERN_PROFILE: profile };
 delete env.ELECTRON_RUN_AS_NODE;
 let app;
 try {
   app = await electron.launch({
-    ...(process.env.TRAILREST_EXECUTABLE
-      ? { executablePath: process.env.TRAILREST_EXECUTABLE }
+    ...(process.env.TERN_EXECUTABLE
+      ? { executablePath: process.env.TERN_EXECUTABLE }
       : { args: ["."], cwd: process.cwd() }),
     env,
     chromiumSandbox: true,
@@ -39,11 +39,10 @@ try {
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setFullScreen(true),
   );
-  await shell.getByRole("button", { name: "New task", exact: true }).click();
   await shell
-    .getByLabel("Task name", { exact: true })
+    .getByRole("textbox", { name: "New task", exact: true })
     .fill("Bitwarden compatibility");
-  await shell.getByRole("button", { name: "Create task", exact: true }).click();
+  await shell.getByRole("textbox", { name: "New task", exact: true }).press("Enter");
   await shell
     .getByRole("textbox", { name: "Address or search" })
     .fill(`http://127.0.0.1:${server.address().port}/`);
@@ -83,7 +82,7 @@ try {
   );
   await popup
     .getByRole("textbox", { name: /Email address/ })
-    .fill("trailrest-check@example.invalid");
+    .fill("tern-check@example.invalid");
   await popup.getByRole("button", { name: "Continue", exact: true }).click();
   await expect(popup.getByLabel(/Master password/)).toBeVisible({
     timeout: 15000,

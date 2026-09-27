@@ -1,0 +1,10 @@
+Use case: ads-marketing
+Asset type: Tern website social preview PNG, landscape 1200x630 or 1536x1024.
+Input image 1 is the APPROVED BRAND REFERENCE. Reproduce its main three-part abstract banking-tern glyph and lowercase "tern" wordmark exactly faithfully. Keep the shapes, angle, negative gaps, and letterforms; remove the reference's texture. Only use the main logo lockup, not the two small icon examples.
+Create one finished social preview card with a perfectly solid ivory #F6F7F2 background, crisp flat forest green #245C4D graphics and typography, broad whitespace and restrained editorial sans-serif type. Place the logo lockup clearly above the headline with balanced margins. The glyph has the reference's long swept upper-left wing, pointed right wing, and curved downward tail separated by clean ivory gaps. Do not redesign it.
+Text, verbatim, in clear legible sans-serif:
+"tern"
+"A browser for coming back to it."
+"A place for your unfinished work."
+The headline is large, with a deliberate line break if needed, and the supporting sentence is smaller. Make the lowercase tern wordmark faithful to the reference. All text and glyph stay comfortably inside the central social crop, with wide margins.
+No texture, no gradient, no glow, no shadow, no photos, no browser mockup, no extra text, no extra symbols. Finished crisp flat brand card.

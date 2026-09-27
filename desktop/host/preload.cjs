@@ -1,5 +1,5 @@
 const { contextBridge, ipcRenderer } = require("electron");
-contextBridge.exposeInMainWorld("trailrest", {
+contextBridge.exposeInMainWorld("tern", {
   snapshot: () => ipcRenderer.invoke("workspace:read"),
   command: (command) => ipcRenderer.invoke("workspace:command", command),
   layout: (bounds) => ipcRenderer.send("page:layout", bounds),

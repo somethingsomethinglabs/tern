@@ -6,7 +6,7 @@ Researched 21 September 2026. This note recommends the next implementation after
 
 Use Electron with a separate `WebContentsView` for each live page. The official release listing currently identifies Electron **44.4.3**, released 18 September 2026, with Chromium 152.0.7977.130 and Node.js 24.21.0. Pin the installed version and keep security updates part of browser maintenance. [Electron releases](https://releases.electronjs.org/?channel=stable)
 
-`WebContentsView` gives the main process ownership of an independent page and its presentation. It can adopt an existing `WebContents`, which may appear in only one view at a time. That matches Trailrest's distinction between a page instance and a URL. Keep the existing React shell in a trusted `BrowserWindow`, with guest views attached to its content view. [WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view)
+`WebContentsView` gives the main process ownership of an independent page and its presentation. It can adopt an existing `WebContents`, which may appear in only one view at a time. That matches Tern's distinction between a page instance and a URL. Keep the existing React shell in a trusted `BrowserWindow`, with guest views attached to its content view. [WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view)
 
 Tauri uses the system webview rather than bundling one. Linux uses WebKitGTK, so this would change the browser engine and tie behavior to the installed system version. For this Chromium-oriented desktop browser, Electron is the more direct continuation of the prototype. [Tauri webview versions](https://v2.tauri.app/reference/webview-versions/)
 
@@ -14,7 +14,7 @@ A Chromium fork offers control below Electron's APIs but requires a separate bro
 
 ## Trust boundary
 
-Remote pages receive no Trailrest preload. Explicitly set `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, and retain `webSecurity`. Do not enable insecure content or experimental features. The shell alone receives a narrow bridge with named operations and validated arguments. [WebPreferences](https://www.electronjs.org/docs/latest/api/structures/web-preferences)
+Remote pages receive no Tern preload. Explicitly set `nodeIntegration: false`, `contextIsolation: true`, `sandbox: true`, and retain `webSecurity`. Do not enable insecure content or experimental features. The shell alone receives a narrow bridge with named operations and validated arguments. [WebPreferences](https://www.electronjs.org/docs/latest/api/structures/web-preferences)
 
 Require each privileged IPC call to come from the actual shell `WebContents`, its main frame, and the trusted shell origin. Reject absent frames. Comparing a requested URL alone does not identify the caller. Do not expose raw IPC, Electron objects, or IPC event arguments through the bridge. Lock shell navigation to its own content. Guests may navigate HTTP and HTTPS; unsupported protocols need an explicit policy and must never flow directly into `shell.openExternal`. [Electron security guidance](https://www.electronjs.org/docs/latest/tutorial/security)
 
@@ -22,7 +22,7 @@ Serve the built shell from a dedicated standard, secure custom protocol. Registe
 
 ## Live pages and presentation
 
-The main process should map page IDs to retained views and owning task IDs. Selecting a task or reference changes visibility; pausing does not reload, close, or recreate its views. Settling remains a task transition and does not certify website submission. These are Trailrest responsibilities built around the view ownership API. [WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view)
+The main process should map page IDs to retained views and owning task IDs. Selecting a task or reference changes visibility; pausing does not reload, close, or recreate its views. Settling remains a task transition and does not certify website submission. These are Tern responsibilities built around the view ownership API. [WebContentsView](https://www.electronjs.org/docs/latest/api/web-contents-view)
 
 Have the shell measure the page rectangle and report it through the validated bridge. Clamp finite integer bounds to the window content area. Refresh them after resize and layout changes. Native views are separate from the shell DOM, so do not assume CSS stacking will place a drawer above them. Hide the guest while a modal covers it, or reserve a nonoverlapping rectangle. Use `setVisible` and `setBounds`; restore page focus when returning. Test the actual composite window visually. [View API](https://www.electronjs.org/docs/latest/api/view)
 

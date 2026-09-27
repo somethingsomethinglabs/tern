@@ -6,7 +6,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import type { Workspace } from "./contracts.js";
+import type { Workspace } from "@tern/core/contracts";
+import { emptyWorkspace, parseWorkspace } from "@tern/core/workspace";
 
 // Persist references only. Live page instances and website form values stay in Chromium.
 export class WorkspaceFile {
@@ -17,81 +18,10 @@ export class WorkspaceFile {
     this.path = join(directory, "workspace.json");
   }
   read(): Workspace {
-    const empty: Workspace = {
-      version: 1,
-      tasks: [],
-      pages: [],
-      selectedTaskId: null,
-    };
+    const empty = emptyWorkspace();
     if (!existsSync(this.path)) return empty;
     try {
-      const value = JSON.parse(readFileSync(this.path, "utf8"));
-      const string = (text: unknown, max: number) =>
-        typeof text === "string" && text.length <= max;
-      if (
-        value.version !== 1 ||
-        !Array.isArray(value.tasks) ||
-        !Array.isArray(value.pages) ||
-        value.tasks.length > 10000 ||
-        value.pages.length > 100000
-      )
-        throw new Error("Unsupported workspace format.");
-      if (
-        !value.tasks.every(
-          (task: Workspace["tasks"][number]) =>
-            task &&
-            string(task.id, 100) &&
-            string(task.title, 120) &&
-            string(task.note, 500) &&
-            ["Active", "Later", "Settled"].includes(task.lifecycle),
-        )
-      )
-        throw new Error("Invalid task data.");
-      if (
-        !value.pages.every((page: Workspace["pages"][number]) => {
-          if (
-            !page ||
-            !string(page.id, 100) ||
-            !string(page.title, 1000) ||
-            typeof page.url !== "string" ||
-            !value.tasks.some(
-              (task: Workspace["tasks"][number]) => task.id === page.taskId,
-            )
-          )
-            return false;
-          if (!page.url) return true;
-          const url = new URL(page.url);
-          return (
-            ["http:", "https:"].includes(url.protocol) &&
-            !url.username &&
-            !url.password
-          );
-        })
-      )
-        throw new Error("Invalid page data.");
-      if (
-        new Set(value.tasks.map((task: Workspace["tasks"][number]) => task.id))
-          .size !== value.tasks.length ||
-        new Set(value.pages.map((page: Workspace["pages"][number]) => page.id))
-          .size !== value.pages.length
-      )
-        throw new Error("Duplicate identifiers.");
-      for (const task of value.tasks)
-        if (
-          !value.pages.some(
-            (page: Workspace["pages"][number]) =>
-              page.id === task.selectedPageId && page.taskId === task.id,
-          )
-        )
-          task.selectedPageId = null;
-      if (
-        !value.tasks.some(
-          (task: Workspace["tasks"][number]) =>
-            task.id === value.selectedTaskId,
-        )
-      )
-        value.selectedTaskId = value.tasks[0]?.id ?? null;
-      return value;
+      return parseWorkspace(readFileSync(this.path, "utf8"));
     } catch (error) {
       // Preserve the unreadable original before allowing any fresh workspace writes.
       try {

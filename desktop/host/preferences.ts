@@ -1,3 +1,4 @@
+import { validatePreferences } from "@tern/core/preferences";
 import {
   existsSync,
   mkdirSync,
@@ -6,7 +7,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { isAbsolute, join } from "node:path";
-import type { Preferences } from "./contracts.js";
+import type { Preferences } from "@tern/core/contracts";
+import { BUILTIN_MODEL, builtinModel } from "@tern/core/local-ai-config";
 
 export class BrowserPreferences {
   value: Preferences;
@@ -21,36 +23,34 @@ export class BrowserPreferences {
       searchEngine: "duckduckgo",
       autoHideToolbar: true,
       sidebarCollapsed: false,
+      showSnapshotTool: true,
+      preloadLinks: true,
+      summaryModel: BUILTIN_MODEL.id,
       defaultZoom: 1,
       askDownloadLocation: true,
       downloadDirectory: downloads,
     };
   }
   private validated(raw: unknown): Preferences {
-    if (!raw || typeof raw !== "object" || Array.isArray(raw))
-      throw new Error("Invalid browser settings.");
-    const patch = raw as Partial<Preferences>;
-    if (Object.keys(patch).some((key) => !Object.hasOwn(this.value, key)))
-      throw new Error("Unknown browser setting.");
-    const next = { ...this.value, ...patch };
-    if (
-      !["duckduckgo", "google", "bing", "brave"].includes(next.searchEngine) ||
-      ![
-        next.autoHideToolbar,
-        next.sidebarCollapsed,
-        next.askDownloadLocation,
-      ].every((value) => typeof value === "boolean") ||
-      ![0.75, 0.9, 1, 1.1, 1.25, 1.5, 2].includes(next.defaultZoom) ||
-      typeof next.downloadDirectory !== "string" ||
-      !isAbsolute(next.downloadDirectory)
-    )
-      throw new Error("Invalid browser settings.");
+    const next = validatePreferences(this.value, raw);
+    if (!isAbsolute(next.downloadDirectory)) throw new Error("Invalid browser settings.");
     return next;
   }
   read() {
     if (!existsSync(this.path)) return;
     try {
-      this.value = this.validated(JSON.parse(readFileSync(this.path, "utf8")));
+      const stored = JSON.parse(readFileSync(this.path, "utf8"));
+      // Built-in artifact IDs change when weights or quantization are updated.
+      // Preserve the rest of the preferences when upgrading an older artifact.
+      if (stored && typeof stored === "object" && !Array.isArray(stored) &&
+          typeof stored.summaryModel === "string" && stored.summaryModel.startsWith("builtin:") &&
+          !builtinModel(stored.summaryModel))
+        stored.summaryModel = BUILTIN_MODEL.id;
+      this.value = this.validated(stored);
+      // Upgrade the previous shipped default to managed inference. Explicit
+      // opt-outs and other custom Ollama model choices remain unchanged.
+      if (["lfm2.5-thinking", "lfm2.5-thinking:latest"].includes(this.value.summaryModel))
+        this.value.summaryModel = BUILTIN_MODEL.id;
     } catch {
       try {
         renameSync(this.path, this.path + ".recovery-" + Date.now());

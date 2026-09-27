@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { Snapshot } from "./contracts.js";
+import type { Snapshot } from "@tern/core/contracts";
 
 const fallback: Snapshot["theme"] = {
   name: "System dark",
@@ -13,8 +13,9 @@ const fallback: Snapshot["theme"] = {
 // Omarchy replaces its current theme directory on a theme change. Polling the
 // small palette file follows that replacement without a stale directory watch.
 export function readTheme(): Snapshot["theme"] {
-  const roots = process.env.TRAILREST_THEME_DIR
-    ? [process.env.TRAILREST_THEME_DIR]
+  const override = process.env.TERN_THEME_DIR || process.env.TRAILREST_THEME_DIR;
+  const roots = override
+    ? [override]
     : [
         join(
           process.env.XDG_STATE_HOME || join(homedir(), ".local/state"),

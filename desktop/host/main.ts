@@ -1,3 +1,6 @@
+import { WorkspaceModel, checkedText } from "@tern/core/workspace-model";
+import { emptyWorkspace } from "@tern/core/workspace";
+import { isWebURL, addressURL, searchURL } from "@tern/core/navigation";
 import {
   app,
   BrowserWindow,
@@ -7,6 +10,7 @@ import {
   net,
   ipcMain,
   dialog,
+  clipboard,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   type WebContents,
@@ -16,7 +20,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { BrowserPreferences } from "./preferences.js";
 import {
   chromeStorePackage,
@@ -29,35 +33,60 @@ import type {
   PageRecord,
   Snapshot,
   Workspace,
-} from "./contracts.js";
+  Finding,
+  Task,
+} from "@tern/core/contracts";
 import { WorkspaceFile } from "./workspace-file.js";
+import { PageSelection } from "@tern/core/page-selection";
 import { readTheme } from "./theme.js";
 import { ExtensionLibrary } from "./extensions.js";
 import { ExtensionBrowser } from "./extension-browser.js";
+import { TaskSummaries } from "./task-summaries.js";
+import { TaskContexts } from "./task-context.js";
+import { TaskStarter } from "./task-start.js";
+import { basicTaskPlan, plannedWorkspace } from "@tern/core/task-plan";
+import { profileDirectory, WEBSITE_PARTITION } from "./profile.js";
+import { PageRestoration } from "./page-restoration.js";
+import { followFirstSearchResult, stopFollowingSearch } from "./first-search-result.js";
 
-app.setName("Trailrest");
-if (process.env.TRAILREST_PROFILE)
-  app.setPath("userData", resolve(process.env.TRAILREST_PROFILE));
+app.setName("Tern");
+// The app-wide equivalent of chrome://flags/#canvas-draw-element.
+const blinkFeatures = app.commandLine.getSwitchValue("enable-blink-features");
+app.commandLine.appendSwitch(
+  "enable-blink-features",
+  [blinkFeatures, "CanvasDrawElement"].filter(Boolean).join(","),
+);
+app.setPath("userData", profileDirectory(app.getPath("appData")));
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: "trailrest",
+    scheme: "tern",
     privileges: { standard: true, secure: true, supportFetchAPI: true },
   },
 ]);
 app.enableSandbox();
 const directory = dirname(fileURLToPath(import.meta.url));
 const storage = new WorkspaceFile(app.getPath("userData"));
+const taskSummaries = new TaskSummaries(app.getPath("userData"));
+const taskContexts = new TaskContexts(app.getPath("userData"));
+const taskStarter = new TaskStarter(app.getPath("userData"));
+let overviewOpen = true;
+let focusResumedPage = false;
 const preferences = new BrowserPreferences(
   app.getPath("userData"),
   app.getPath("downloads"),
 );
-const workspace: Workspace = {
-  version: 1,
-  tasks: [],
-  pages: [],
-  selectedTaskId: null,
-};
+const workspace: Workspace = emptyWorkspace();
+const workspaceModel = new WorkspaceModel(workspace, { id: randomUUID, now: Date.now });
 const views = new Map<string, WebContentsView>();
+const pageSelection = new PageSelection();
+const startingSearches = new WeakSet<PageRecord>();
+const preloadingState = new WeakMap<WebContents, boolean>();
+const preconnectedOrigins = new WeakMap<WebContents, Set<string>>();
+const restoration = new PageRestoration((id) => {
+  const page = workspace.pages.find((page) => page.id === id);
+  if (!page?.url || quitting) return;
+  return showPage(page);
+});
 const lostRenderers = new Set<string>();
 const errors = new Map<string, string>();
 let window: BrowserWindow;
@@ -69,6 +98,7 @@ let notice = "";
 let quitting = false;
 const downloads: Snapshot["downloads"] = [];
 const downloadDestinations = new Set<string>();
+let takingSnapshot = false;
 let pageBounds: PageBounds = {
   x: 280,
   y: 56,
@@ -78,20 +108,82 @@ let pageBounds: PageBounds = {
 };
 
 function selectedTask() {
-  return workspace.tasks.find((task) => task.id === workspace.selectedTaskId);
+  return workspaceModel.task();
 }
 function selectedPage() {
-  return workspace.pages.find(
-    (page) => page.id === selectedTask()?.selectedPageId,
-  );
+  return workspaceModel.page();
 }
 function currentContents() {
   const id = selectedPage()?.id;
   return id ? views.get(id)?.webContents : undefined;
 }
+function unloadTaskPages(taskId: string) {
+  const owned: WebContentsView[] = [];
+  for (const page of workspace.pages.filter((page) => page.taskId === taskId)) {
+    // Cancel every queued tab before closing a page can advance restoration.
+    restoration.forget(page.id);
+    const view = views.get(page.id);
+    if (view) owned.push(view);
+    // Detach all views first so their destroyed handlers keep the references,
+    // including any popup that closes along with its opener.
+    views.delete(page.id);
+    errors.delete(page.id);
+    lostRenderers.delete(page.id);
+    startingSearches.delete(page);
+  }
+  for (const view of owned) {
+    window.contentView.removeChildView(view);
+    if (!view.webContents.isDestroyed()) {
+      stopFollowingSearch(view.webContents);
+      view.webContents.close();
+    }
+  }
+}
+function reopenPage(page: PageRecord) {
+  if (!page.url) return;
+  if (errors.has(page.id)) {
+    const view = views.get(page.id);
+    views.delete(page.id);
+    if (view) {
+      window.contentView.removeChildView(view);
+      view.webContents.close();
+    }
+    errors.delete(page.id);
+  }
+  showPage(page);
+}
+function closePages(pages: PageRecord[]) {
+  if (pages.some(page => views.has(page.id)) && !confirm(
+    pages.length === 1 ? "Close this page?" : `Close ${pages.length} tabs?`,
+    "Unsaved website changes may be lost. Other pages in this task stay open.",
+    pages.length === 1 ? "Close page" : "Close tabs",
+  )) return;
+  for (const page of pages) restoration.forget(page.id);
+  for (const page of pages) {
+    const contents = views.get(page.id)?.webContents;
+    if (contents) {
+      contents.close({ waitForBeforeUnload: true });
+    } else {
+      workspaceModel.removePage(page.id);
+    }
+  }
+}
 function snapshot(): Snapshot {
   return {
     ...workspace,
+    selectedPageIds: pageSelection.selected(workspace),
+    overviewOpen,
+    summaries: taskSummaries.snapshot(
+      workspace,
+      preferences.value.summaryModel,
+    ),
+    summaryStatus: taskSummaries.status,
+    pendingSummaryTaskIds: taskSummaries.pendingTaskIds,
+    taskContext: taskContexts.snapshot(workspace, preferences.value.summaryModel),
+    contextStatus: taskContexts.status,
+    contextPending: taskContexts.pendingTaskId === workspace.selectedTaskId && taskContexts.pendingTaskId !== null,
+    taskStartStatus: taskStarter.status,
+    taskStartPending: taskStarter.pending,
     preferences: preferences.value,
     theme,
     extensions: (extensions?.list() ?? []).map((extension) => ({
@@ -124,64 +216,44 @@ function layout() {
   const [width, height] = window.getContentSize();
   for (const [id, view] of views) {
     const visible =
-      id === selectedPage()?.id && pageBounds.visible && !errors.has(id);
+      !overviewOpen &&
+      id === selectedPage()?.id &&
+      pageBounds.visible &&
+      !errors.has(id);
     view.setVisible(visible);
-    if (visible)
+    const preloadLinks =
+      visible && window.isFocused() && preferences.value.preloadLinks;
+    if (
+      !lostRenderers.has(id) && !view.webContents.isDestroyed() &&
+      preloadingState.get(view.webContents) !== preloadLinks
+    ) {
+      preloadingState.set(view.webContents, preloadLinks);
+      view.webContents.send("guest:link-preloading", preloadLinks);
+    }
+    if (visible) {
       view.setBounds({
         x: Math.min(width, Math.max(0, pageBounds.x)),
         y: Math.min(height, Math.max(0, pageBounds.y)),
         width: Math.max(0, Math.min(pageBounds.width, width - pageBounds.x)),
         height: Math.max(0, Math.min(pageBounds.height, height - pageBounds.y)),
       });
+      if (focusResumedPage) {
+        view.webContents.focus();
+        focusResumedPage = false;
+      }
+    }
   }
 }
-function isWebURL(value: string) {
-  try {
-    const url = new URL(value);
-    return (
-      ["http:", "https:"].includes(url.protocol) &&
-      !url.username &&
-      !url.password
-    );
-  } catch {
-    return false;
-  }
-}
-function addressURL(address: string) {
-  const value = address.trim();
-  if (!value || value.length > 8192)
-    throw new Error("Enter an address or search query.");
-  if (isWebURL(value)) return new URL(value).href;
-  if (
-    /^[a-z][a-z\d+.-]*:/i.test(value) &&
-    !/^(localhost|[\w.-]+\.\w+):\d+(\/|$)/i.test(value)
-  )
-    throw new Error("Only HTTP and HTTPS addresses can be opened.");
-  if (!/\s/.test(value) && /^(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(value))
-    return new URL("http://" + value).href;
-  if (!/\s/.test(value) && value.includes(".")) {
-    const url = "https://" + value;
-    if (isWebURL(url)) return new URL(url).href;
-  }
-  const engines = {
-    duckduckgo: "https://duckduckgo.com/?q=",
-    google: "https://www.google.com/search?q=",
-    bing: "https://www.bing.com/search?q=",
-    brave: "https://search.brave.com/search?q=",
-  };
-  return engines[preferences.value.searchEngine] + encodeURIComponent(value);
+function keepFinding(task: Task, text: string, source?: Finding["source"]) {
+  workspaceModel.keepFinding(task, text, source);
+  taskContexts.stop();
 }
 function newPage(taskId: string, url = "") {
-  const page: PageRecord = {
-    id: randomUUID(),
-    taskId,
-    title: url ? "Loading…" : "New page",
-    url,
-  };
-  workspace.pages.push(page);
-  const task = workspace.tasks.find((task) => task.id === taskId)!;
-  task.selectedPageId = page.id;
-  return page;
+  return workspaceModel.newPage(taskId, url);
+}
+function recordActivity() {
+  if (overviewOpen) return;
+  workspaceModel.recordActivity();
 }
 function guestPreferences(): Electron.WebPreferences {
   return {
@@ -202,6 +274,9 @@ function showPage(
     layout();
     return views.get(page.id)!.webContents;
   }
+  if (views.size + restoration.size >= 100 && !restoration.has(page.id))
+    throw new Error("Close a page before opening another.");
+  restoration.forget(page.id);
   const view = new WebContentsView({
     ...(adopt ? { webContents: adopt } : {}),
     webPreferences: guestPreferences(),
@@ -210,7 +285,32 @@ function showPage(
   views.set(page.id, view);
   window.contentView.addChildView(view);
   const contents = view.webContents;
-  extensionBrowser.addPage(contents);
+  contents.on("dom-ready", () => {
+    preloadingState.delete(contents);
+    preconnectedOrigins.delete(contents);
+    layout();
+  });
+  extensionBrowser.addPage(contents, (params) => {
+    if (params.isEditable || !params.selectionText.trim()) return [];
+    const owner = workspace.tasks.find((task) => task.id === page.taskId);
+    const url = params.frameURL || params.pageURL || contents.getURL();
+    if (!owner || !isWebURL(url)) return [];
+    const selection = params.selectionText;
+    const source = { title: url === contents.getURL() ? contents.getTitle().slice(0, 1000) : new URL(url).hostname, url };
+    return [
+      { role: "copy" },
+      { label: "Keep selection as a finding", enabled: selection.length <= 1000 && url.length <= 32768,
+        click: () => {
+          try {
+            keepFinding(owner, selection, source);
+            storage.save(workspace);
+            notice = "Finding saved with its source in Task notes.";
+          } catch (error) { notice = (error as Error).message; }
+          publish();
+        },
+      },
+    ];
+  });
   contents.setZoomFactor(preferences.value.defaultZoom);
   contents.on("did-finish-load", () =>
     contents.setZoomFactor(preferences.value.defaultZoom),
@@ -221,6 +321,7 @@ function showPage(
     if (isWebURL(url)) page.url = url;
     const title = contents.getTitle();
     if (title) page.title = title.slice(0, 1000);
+    if (page.id === selectedPage()?.id && pageBounds.visible) recordActivity();
     storage.save(workspace);
     publish();
     layout();
@@ -253,7 +354,7 @@ function showPage(
     if (!isWebURL(url)) {
       event.preventDefault();
       notice =
-        "Blocked an unsupported address. Trailrest opens HTTP and HTTPS pages.";
+        "Blocked an unsupported address. Tern opens HTTP and HTTPS pages.";
       publish();
     }
   };
@@ -273,17 +374,13 @@ function showPage(
     if (views.get(page.id) !== view) return;
     views.delete(page.id);
     window.contentView.removeChildView(view);
-    workspace.pages = workspace.pages.filter((item) => item.id !== page.id);
-    const task = workspace.tasks.find((task) => task.id === page.taskId);
-    if (task?.selectedPageId === page.id)
-      task.selectedPageId =
-        workspace.pages.find((item) => item.taskId === task.id)?.id ?? null;
+    workspaceModel.removePage(page.id);
     storage.save(workspace);
     publish();
     layout();
   });
   contents.setWindowOpenHandler((details) => {
-    if (!isWebURL(details.url) || views.size >= 100) {
+    if (!isWebURL(details.url) || views.size + restoration.size >= 100) {
       notice =
         "New window blocked. Only HTTP and HTTPS pages are supported, with up to 100 live pages.";
       publish();
@@ -296,7 +393,11 @@ function showPage(
         webPreferences: guestPreferences(),
       },
       createWindow: (options) => {
+        const owner = workspace.tasks.find((task) => task.id === page.taskId)!;
+        const previous = owner.selectedPageId;
         const popup = newPage(page.taskId, details.url);
+        if (details.disposition === "background-tab")
+          owner.selectedPageId = previous;
         const adopted = (
           options as Electron.BrowserWindowConstructorOptions & {
             webContents?: WebContents;
@@ -319,6 +420,15 @@ function showPage(
     };
   });
   contents.on("before-input-event", keyboard);
+  contents.on("focus", () =>
+    window.webContents.send("shell:shortcut", "dismissMenu"),
+  );
+  contents.on("before-mouse-event", (_event, input) => {
+    if (input.type === "mouseDown" || input.type === "mouseWheel")
+      window.webContents.send("shell:shortcut", "dismissMenu");
+  });
+  if (startingSearches.delete(page) && load && page.url)
+    followFirstSearchResult(contents, page.url);
   if (load && page.url) void contents.loadURL(page.url).catch(() => {});
   layout();
   publish();
@@ -347,6 +457,17 @@ function keyboard(event: Electron.Event, input: Electron.Input) {
       : "hints:off",
   );
   if (input.type !== "keyDown") return;
+  if (
+    key === "f12" ||
+    ((input.control || input.meta) && input.shift && !input.alt && key === "i")
+  ) {
+    event.preventDefault();
+    if (overviewOpen || !pageBounds.visible) return;
+    const contents = currentContents();
+    if (contents?.isDevToolsOpened()) contents.closeDevTools();
+    else contents?.openDevTools({ mode: "detach" });
+    return;
+  }
   try {
     if (extensionBrowser?.handleShortcut(input)) {
       event.preventDefault();
@@ -369,21 +490,26 @@ function keyboard(event: Electron.Event, input: Electron.Input) {
     ["l", "t", "f", "w", "r"].includes(key)
   ) {
     event.preventDefault();
-    if (key === "w" || key === "r")
-      void command({ type: key === "w" ? "closePage" : "reload" }).catch(
-        () => {},
-      );
+    if ((key === "w" || key === "r") && overviewOpen) return;
+    if (key === "w" || key === "r") {
+      const ids = pageSelection.selected(workspace);
+      void command(key === "w" && ids.length > 1
+        ? { type: "pageSelectionAction", action: "close", ids }
+        : { type: key === "w" ? "closePage" : "reload" }).catch(() => {});
+    }
     else {
       window.webContents.focus();
       window.webContents.send("shell:shortcut", key);
     }
   } else if (input.alt && ["arrowleft", "arrowright"].includes(key)) {
     event.preventDefault();
+    if (overviewOpen) return;
     void command({ type: key === "arrowleft" ? "back" : "forward" }).catch(
       () => {},
     );
   } else if (key === "f5") {
     event.preventDefault();
+    if (overviewOpen) return;
     void command({ type: "reload" }).catch(() => {});
   }
 }
@@ -396,18 +522,130 @@ async function command(raw: unknown) {
   )
     throw new Error("Invalid command.");
   const value = raw as Command;
-  const text = (input: unknown, max: number) => {
-    if (typeof input !== "string" || input.length > max)
-      throw new Error("Invalid text.");
-    return input;
+  const text = checkedText;
+  const targetPage = (id?: string) => {
+    if (id === undefined) return selectedPage();
+    const page = workspace.pages.find((page) => page.id === text(id, 100));
+    if (!page) throw new Error("Page not found.");
+    return page;
   };
-  switch (value.type) {
-    case "saveNote": {
-      const task = workspace.tasks.find(
-        (task) => task.id === text(value.id, 100),
-      );
-      if (!task) throw new Error("Task not found.");
-      task.note = text(value.note, 500);
+  const targetTask = (id?: string) => {
+    if (id === undefined) return selectedTask();
+    const task = workspace.tasks.find((task) => task.id === text(id, 100));
+    if (!task) throw new Error("Task not found.");
+    return task;
+  };
+  if (["openTask", "selectTask", "selectPage", "createTask", "showOverview", "newPage", "navigate", "suggestTaskContext"].includes(value.type))
+    taskStarter.stop();
+  let createdTaskId: string | undefined;
+  const effects = workspaceModel.command(value);
+  if (effects) {
+    if (effects.contextChanged) taskContexts.stop();
+    if (effects.releaseTaskPages) unloadTaskPages(effects.releaseTaskPages);
+  } else switch (value.type) {
+    case "cancelTaskStart":
+      taskStarter.stop();
+      break;
+    case "startTask": {
+      const request = text(value.request, 1000).trim();
+      if (!request) throw new Error("Describe what you need to do.");
+      if (typeof value.useAI !== "boolean") throw new Error("Choose how to create the task.");
+      if (taskStarter.pending) throw new Error("A task is already being prepared.");
+      if (workspace.tasks.length >= 10000) throw new Error("The workspace has reached its task limit.");
+      taskSummaries.stop();
+      taskContexts.stop();
+      const plan = value.useAI
+        ? await taskStarter.prepare(request, preferences.value.summaryModel, publish)
+        : basicTaskPlan(request);
+      if (!plan || quitting) return;
+      if (views.size + restoration.size + plan.searches.length > 100)
+        throw new Error("Close a few pages before starting this task. Your request is still here.");
+      const next = plannedWorkspace(workspace, plan, request, preferences.value.searchEngine, randomUUID);
+      const task = next.tasks[next.tasks.length - 1];
+      const pages = next.pages.filter(page => page.taskId === task.id);
+      if (!storage.save(next)) { publish(); throw new Error(storage.error); }
+      Object.assign(workspace, next);
+      createdTaskId = task.id;
+      overviewOpen = false;
+      focusResumedPage = false;
+      for (const page of pages) startingSearches.add(page);
+      restoration.resume(task.selectedPageId, pages.map((page) => page.id));
+      recordActivity();
+      notice = "Each starting tab opens its first web result when available. Your goal and original request are in Task notes.";
+      break;
+    }
+    case "takeSnapshot": {
+      if (takingSnapshot) throw new Error("A snapshot is already being saved.");
+      const page = selectedPage();
+      const contents = currentContents();
+      if (
+        !preferences.value.showSnapshotTool ||
+        overviewOpen ||
+        !page ||
+        !contents ||
+        contents.isDestroyed() ||
+        lostRenderers.has(page.id) ||
+        errors.has(page.id) ||
+        !pageBounds.visible
+      )
+        throw new Error("Open a website before taking a snapshot.");
+      takingSnapshot = true;
+      const destination = preferences.value.downloadDirectory;
+      try {
+        // Capture the guest itself, so browser controls never enter the image.
+        const image = await contents.capturePage();
+        if (image.isEmpty())
+          throw new Error(
+            "The page could not be captured. Try again when it is visible.",
+          );
+        const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const name = `Snapshot-${stamp}-${randomUUID().slice(0, 8)}.png`;
+        const path = join(destination, name);
+        try {
+          await mkdir(destination, { recursive: true });
+          await writeFile(path, image.toPNG(), { flag: "wx", mode: 0o600 });
+        } catch {
+          throw new Error(
+            "Could not save the snapshot. Check your download folder permissions and disk space.",
+          );
+        }
+        downloads.unshift({ id: randomUUID(), name, status: "Completed" });
+        downloads.splice(20);
+        notice = `Snapshot saved to ${path}`;
+      } finally {
+        takingSnapshot = false;
+      }
+      break;
+    }
+    case "suggestTaskContext": {
+      const task = targetTask(value.id)!;
+      if (overviewOpen || task.id !== workspace.selectedTaskId)
+        throw new Error("Open this task before generating suggestions.");
+      if (!preferences.value.summaryModel) throw new Error("Enable local AI in Settings to generate suggestions.");
+      taskSummaries.stop();
+      void taskContexts.refresh(workspace, task.id, preferences.value.summaryModel, publish);
+      break;
+    }
+    case "cancelTaskContext":
+      taskContexts.stop();
+      break;
+    case "searchTask":
+    case "openFindingSource": {
+      const task = targetTask(value.id)!;
+      let url: string;
+      if (value.type === "searchTask") {
+        const query = text(value.query, 160).trim();
+        if (!query) throw new Error("Enter a search query.");
+        // Always a search, even if the model returns an address or URL scheme.
+        url = searchURL(query, preferences.value.searchEngine);
+      } else {
+        const source = task.findings?.find((finding) => finding.id === text(value.findingId, 100))?.source;
+        if (!source || !isWebURL(source.url)) throw new Error("Source unavailable.");
+        url = source.url;
+      }
+      if (views.size + restoration.size >= 100) throw new Error("Close a page before opening another.");
+      workspace.selectedTaskId = task.id;
+      showPage(newPage(task.id, url));
       break;
     }
     case "setPreferences": {
@@ -418,6 +656,17 @@ async function command(raw: unknown) {
       )
         throw new Error("Invalid browser settings.");
       preferences.update(value.patch);
+      if ("summaryModel" in value.patch) {
+        taskSummaries.stop(true);
+        taskContexts.stop(true);
+        taskStarter.stop();
+        if (overviewOpen)
+          void taskSummaries.refresh(
+            workspace,
+            preferences.value.summaryModel,
+            publish,
+          );
+      }
       for (const view of views.values())
         if (!view.webContents.isDestroyed())
           view.webContents.setZoomFactor(preferences.value.defaultZoom);
@@ -460,7 +709,7 @@ async function command(raw: unknown) {
         const response = await dialog.showMessageBox(window, {
           type: "question",
           message: "Load " + extension.name + "?",
-          detail: `Version ${extension.version}\nPermissions: ${extension.permissions}\n\nThis imports unpacked code. Trailrest does not verify the package's publisher signature. Extensions can read and change websites; some Chrome APIs and browser integrations remain unsupported.`,
+          detail: `Version ${extension.version}\nPermissions: ${extension.permissions}\n\nThis imports unpacked code. Tern does not verify the package's publisher signature. Extensions can read and change websites; some Chrome APIs and browser integrations remain unsupported.`,
           buttons: ["Cancel", "Load extension"],
           defaultId: 0,
           cancelId: 0,
@@ -554,35 +803,45 @@ async function command(raw: unknown) {
     case "openExtension":
       extensionBrowser.open(text(value.id, 100));
       break;
-    case "moveTask": {
-      const task = workspace.tasks.find(
-        (task) => task.id === text(value.id, 100),
+    case "showOverview":
+      taskContexts.stop();
+      overviewOpen = true;
+      focusResumedPage = false;
+      void taskSummaries.refresh(
+        workspace,
+        preferences.value.summaryModel,
+        publish,
       );
-      if (!task || !["Active", "Later", "Settled"].includes(value.lifecycle))
-        throw new Error("Invalid task destination.");
-      task.lifecycle = value.lifecycle;
       break;
-    }
-    case "createTask": {
-      const title = text(value.title, 120).trim();
-      if (!title) throw new Error("Enter a task name.");
-      const task = {
-        id: randomUUID(),
-        title,
-        lifecycle: "Active" as const,
-        note: "",
-        selectedPageId: null,
-      };
-      workspace.tasks.push(task);
-      workspace.selectedTaskId = task.id;
-      break;
-    }
+    case "openTask":
     case "selectTask": {
       const task = workspace.tasks.find(
         (task) => task.id === text(value.id, 100),
       );
       if (!task) throw new Error("Task not found.");
+      if (value.type === "openTask") {
+        if (!task.selectedPageId)
+          task.selectedPageId =
+            workspace.pages.find((page) => page.taskId === task.id)?.id ?? null;
+        const pages = workspace.pages.filter(
+          (page) => page.taskId === task.id && page.url && !views.has(page.id),
+        );
+        const unqueued = pages.filter((page) => !restoration.has(page.id));
+        if (views.size + restoration.size + unqueued.length > 100)
+          throw new Error(
+            "This task would exceed 100 live pages. Select it in the sidebar to reopen individual pages.",
+          );
+        workspace.selectedTaskId = task.id;
+        overviewOpen = false;
+        restoration.resume(
+          task.selectedPageId,
+          pages.map((page) => page.id),
+        );
+      }
       workspace.selectedTaskId = task.id;
+      focusResumedPage = value.type === "openTask";
+      if (task.selectedPageId && restoration.has(task.selectedPageId))
+        restoration.open(task.selectedPageId);
       break;
     }
     case "selectPage": {
@@ -590,56 +849,95 @@ async function command(raw: unknown) {
         (page) => page.id === text(value.id, 100),
       );
       if (!page) throw new Error("Page not found.");
-      workspace.selectedTaskId = page.taskId;
-      selectedTask()!.selectedPageId = page.id;
+      if (value.selection !== undefined && !["toggle", "range", "addRange"].includes(value.selection))
+        throw new Error("Invalid tab selection.");
+      pageSelection.select(workspace, page, value.selection);
+      const activeId = selectedTask()!.selectedPageId;
+      if (activeId && restoration.has(activeId)) restoration.open(activeId);
       break;
     }
-    case "newPage":
-      if (selectedTask()) newPage(selectedTask()!.id);
-      break;
-    case "renameTask": {
-      const task = workspace.tasks.find(
-        (task) => task.id === text(value.id, 100),
-      );
-      const title = text(value.title, 120).trim();
-      if (!task || !title) throw new Error("Enter a task name.");
-      task.title = title;
-      break;
-    }
-    case "pause": {
-      const task = selectedTask();
-      if (task) {
-        task.note = text(value.note, 500);
-        task.lifecycle = "Later";
-      }
-      break;
-    }
-    case "resume":
-      if (selectedTask()) selectedTask()!.lifecycle = "Active";
-      break;
-    case "settle":
-      if (selectedTask()) selectedTask()!.lifecycle = "Settled";
-      break;
-    case "reopen": {
-      const page = selectedPage();
-      if (page?.url) {
-        if (errors.has(page.id)) {
-          const view = views.get(page.id);
-          views.delete(page.id);
-          if (view) {
-            window.contentView.removeChildView(view);
-            view.webContents.close();
-          }
-          errors.delete(page.id);
+    case "pageSelectionAction": {
+      if (!Array.isArray(value.ids) || !value.ids.length || value.ids.length > 100000)
+        throw new Error("Select at least one tab.");
+      const ids = new Set(value.ids.map(id => text(id, 100)));
+      const pages = workspace.pages.filter(page => ids.has(page.id));
+      if (pages.length !== ids.size || pages.some(page => page.taskId !== workspace.selectedTaskId))
+        throw new Error("Select tabs from the current task.");
+      switch (value.action) {
+        case "close":
+          closePages(pages);
+          break;
+        case "copyAddresses":
+          clipboard.writeText(pages.map(page => page.url).filter(Boolean).join("\n"));
+          break;
+        case "duplicate": {
+          if (views.size + restoration.size + pages.filter(page => page.url).length > 100)
+            throw new Error("Close a page before opening more tabs.");
+          if (pages.some(page => page.url && !isWebURL(page.url)))
+            throw new Error("Unsupported page address.");
+          const copies = pages.map(page => newPage(page.taskId, page.url));
+          pageSelection.replace(workspace, copies);
+          for (const copy of copies) if (copy.url) showPage(copy);
+          break;
         }
-        showPage(page);
+        case "reload": {
+          const missing = pages.filter(page => page.url && !views.has(page.id) && !restoration.has(page.id));
+          if (views.size + restoration.size + missing.length > 100)
+            throw new Error("Close a page before opening more tabs.");
+          if (pages.some(page => views.has(page.id)) && !confirm(
+            `Reload ${pages.length} tabs?`,
+            "Unsaved website changes may be lost. Reloading does not save or submit the pages.",
+            "Reload tabs",
+          )) break;
+          for (const page of pages) {
+            const contents = views.get(page.id)?.webContents;
+            if (contents && !errors.has(page.id)) {
+              stopFollowingSearch(contents);
+              contents.reload();
+            } else reopenPage(page);
+          }
+          break;
+        }
+        default:
+          throw new Error("Invalid tab action.");
       }
+      break;
+    }
+    case "newPage": {
+      const task = targetTask(value.taskId);
+      if (task) {
+        workspace.selectedTaskId = task.id;
+        newPage(task.id);
+      }
+      break;
+    }
+    case "duplicatePage": {
+      const original = targetPage(value.id)!;
+      if (views.size + restoration.size >= 100)
+        throw new Error("Close a page before opening another.");
+      if (original.url && !isWebURL(original.url))
+        throw new Error("Unsupported page address.");
+      workspace.selectedTaskId = original.taskId;
+      const copy = newPage(original.taskId, original.url);
+      if (copy.url) showPage(copy);
+      break;
+    }
+    case "copyPageAddress": {
+      const page = targetPage(value.id)!;
+      if (page.url) clipboard.writeText(page.url);
+      break;
+    }
+    case "reopen": {
+      const page = targetPage(value.id);
+      if (page) reopenPage(page);
       break;
     }
     case "navigate": {
-      const url = addressURL(text(value.address, 8192));
+      const url = addressURL(text(value.address, 8192), preferences.value.searchEngine);
       if (!selectedTask()) throw new Error("Create a task first.");
       const page = selectedPage() ?? newPage(selectedTask()!.id);
+      stopFollowingSearch(views.get(page.id)?.webContents);
+      startingSearches.delete(page);
       page.url = url;
       errors.delete(page.id);
       if (views.has(page.id))
@@ -651,41 +949,32 @@ async function command(raw: unknown) {
       break;
     }
     case "back":
+      stopFollowingSearch(currentContents());
       currentContents()?.navigationHistory.goBack();
       break;
     case "forward":
+      stopFollowingSearch(currentContents());
       currentContents()?.navigationHistory.goForward();
       break;
-    case "reload":
+    case "reload": {
+      const page = targetPage(value.id);
+      const contents = page && views.get(page.id)?.webContents;
       if (
-        currentContents() &&
+        contents &&
         confirm(
           "Reload this page?",
           "Unsaved website changes may be lost. Reloading does not save or submit the page.",
           "Reload",
         )
-      )
-        currentContents()!.reload();
-      break;
-    case "closePage": {
-      const page = selectedPage();
-      if (!page) break;
-      const contents = views.get(page.id)?.webContents;
-      if (contents) {
-        if (
-          confirm(
-            "Close this page?",
-            "Unsaved website changes may be lost. Other pages in this task stay open.",
-            "Close page",
-          )
-        )
-          contents.close({ waitForBeforeUnload: true });
-      } else {
-        workspace.pages = workspace.pages.filter((item) => item.id !== page.id);
-        selectedTask()!.selectedPageId =
-          workspace.pages.find((item) => item.taskId === page.taskId)?.id ??
-          null;
+      ) {
+        stopFollowingSearch(contents);
+        contents.reload();
       }
+      break;
+    }
+    case "closePage": {
+      const page = targetPage(value.id);
+      if (page) closePages([page]);
       break;
     }
     case "find": {
@@ -699,6 +988,7 @@ async function command(raw: unknown) {
       currentContents()?.stopFindInPage("clearSelection");
       break;
     case "stop":
+      stopFollowingSearch(currentContents());
       currentContents()?.stop();
       break;
     case "dismissNotice":
@@ -707,15 +997,36 @@ async function command(raw: unknown) {
     default:
       throw new Error("This command is not available yet.");
   }
+  if (
+    [
+      "openTask",
+      "selectTask",
+      "selectPage",
+      "createTask",
+      "newPage",
+      "navigate",
+      "duplicatePage",
+      "reopen",
+      "searchTask",
+      "openFindingSource",
+    ].includes(value.type) ||
+    (value.type === "pageSelectionAction" && ["duplicate", "reload"].includes(value.action))
+  ) {
+    overviewOpen = false;
+    taskSummaries.stop();
+    taskContexts.stop();
+    recordActivity();
+  }
   storage.save(workspace);
   layout();
   publish();
+  if (createdTaskId) return { createdTaskId };
 }
 function trusted(event: IpcMainEvent | IpcMainInvokeEvent) {
   if (
     event.sender !== window.webContents ||
     event.senderFrame !== window.webContents.mainFrame ||
-    event.senderFrame?.url !== "trailrest://app/index.html"
+    event.senderFrame?.url !== "tern://app/index.html"
   )
     throw new Error("Untrusted request.");
 }
@@ -734,11 +1045,12 @@ async function start() {
     }
   });
   await app.whenReady();
-  guests = session.fromPartition("persist:trailrest-web");
+  guests = session.fromPartition(WEBSITE_PARTITION);
   extensions = new ExtensionLibrary(guests, app.getPath("userData"));
   guests.setPermissionRequestHandler(
     (contents, permission, callback, details) => {
       if (
+        permission === "clipboard-sanitized-write" ||
         extensionBrowser?.allowsClipboard(
           contents,
           permission,
@@ -753,13 +1065,14 @@ async function start() {
       try {
         origin = new URL(contents.getURL()).origin;
       } catch {}
-      notice = `${origin} requested ${permission}. Website permissions are disabled in this build.`;
+      notice = `${origin} requested ${permission}. This website permission is disabled in this build.`;
       publish();
     },
   );
   guests.setPermissionCheckHandler(
     (contents, permission, origin) =>
-      extensionBrowser?.allowsClipboard(contents, permission, origin) ?? false,
+      permission === "clipboard-sanitized-write" ||
+      (extensionBrowser?.allowsClipboard(contents, permission, origin) ?? false),
   );
   guests.on("will-download", (_event, item) => {
     const download = {
@@ -811,9 +1124,9 @@ async function start() {
       item.setSavePath(destination);
     } else item.cancel();
   });
-  const shellSession = session.fromPartition("trailrest-shell");
+  const shellSession = session.fromPartition("tern-shell");
   const uiRoot = resolve(directory, "../ui");
-  shellSession.protocol.handle("trailrest", (request) => {
+  shellSession.protocol.handle("tern", (request) => {
     const url = new URL(request.url);
     const path = resolve(uiRoot, "." + decodeURIComponent(url.pathname));
     if (url.host !== "app" || !path.startsWith(uiRoot + sep))
@@ -825,7 +1138,8 @@ async function start() {
     height: 960,
     minWidth: 480,
     minHeight: 480,
-    title: "Trailrest",
+    title: "Tern",
+    icon: resolve(app.getAppPath(), "resources/tern-icon.png"),
     backgroundColor: theme.background,
     webPreferences: {
       session: shellSession,
@@ -843,6 +1157,8 @@ async function start() {
   window.on("blur", () =>
     window.webContents.send("shell:shortcut", "hints:off"),
   );
+  window.on("focus", layout);
+  window.on("blur", layout);
   const themeTimer = setInterval(() => {
     const next = readTheme();
     if (JSON.stringify(next) !== JSON.stringify(theme)) {
@@ -868,6 +1184,23 @@ async function start() {
     )
       return;
     window.webContents.send("shell:shortcut", "scroll:" + direction);
+  });
+  ipcMain.on("guest:preconnect", (event, origin: unknown) => {
+    if (
+      typeof origin !== "string" || origin.length > 2048 ||
+      !preferences.value.preloadLinks || !window.isFocused() ||
+      overviewOpen || !pageBounds.visible ||
+      event.sender !== currentContents() ||
+      event.senderFrame !== event.sender.mainFrame ||
+      !isWebURL(event.senderFrame.url) || !isWebURL(origin)
+    ) return;
+    const target = new URL(origin);
+    if (target.origin !== origin || target.origin === new URL(event.senderFrame.url).origin) return;
+    const origins = preconnectedOrigins.get(event.sender) ?? new Set<string>();
+    if (origins.has(origin) || origins.size >= 2) return;
+    origins.add(origin);
+    preconnectedOrigins.set(event.sender, origins);
+    guests.preconnect({ url: origin, numSockets: 1 });
   });
   ipcMain.on("page:layout", (event, bounds: PageBounds) => {
     trusted(event);
@@ -897,7 +1230,7 @@ async function start() {
     if (
       (views.size || !saved) &&
       !confirm(
-        "Quit Trailrest?",
+        "Quit Tern?",
         saved
           ? "Task names, notes and page addresses are saved. Live pages will close, and unsaved website changes will not be restored."
           : "Task changes could not be saved. Quitting will lose those changes as well as live website state.",
@@ -909,6 +1242,10 @@ async function start() {
       return;
     }
     quitting = true;
+    restoration.stop();
+    taskSummaries.stop();
+    taskContexts.stop();
+    taskStarter.stop();
     const owned = [...views.values()];
     views.clear();
     for (const view of owned)
@@ -919,7 +1256,7 @@ async function start() {
     create(url, active) {
       if (url !== "about:blank" && !isWebURL(url))
         throw new Error("Only HTTP and HTTPS pages can be opened.");
-      if (views.size >= 100)
+      if (views.size + restoration.size >= 100)
         throw new Error("Close a page before opening another.");
       if (!selectedTask()) {
         const id = randomUUID();
@@ -979,7 +1316,12 @@ async function start() {
   } catch (error) {
     notice = String(error);
   }
-  await window.loadURL("trailrest://app/index.html");
+  await window.loadURL("tern://app/index.html");
+  void taskSummaries.refresh(
+    workspace,
+    preferences.value.summaryModel,
+    publish,
+  );
 }
 void start().catch((error) => {
   console.error(error);

@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f6f7f2" />
+    <meta
+      name="description"
+      content="Tern is a browser organized around unfinished work. Put a task aside, keep a next-step note, and return to its pages when you're ready."
+    />
+    <link
+      rel="canonical"
+      href="https://tern-browser.rowanjpaterson.chatgpt.site/"
+    />
+    <meta
+      property="og:url"
+      content="https://tern-browser.rowanjpaterson.chatgpt.site/"
+    />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:title"
+      content="Tern | A browser for coming back to it"
+    />
+    <meta
+      property="og:description"
+      content="Put a task aside. Keep your next step. Pick up where you left off."
+    />
+    <meta
+      property="og:image"
+      content="https://tern-browser.rowanjpaterson.chatgpt.site/og.png"
+    />
+    <meta
+      property="og:image:alt"
+      content="Tern. A browser for coming back to it. A place for your unfinished work."
+    />
+    <meta
+      name="twitter:image"
+      content="https://tern-browser.rowanjpaterson.chatgpt.site/og.png"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta
+      name="twitter:title"
+      content="Tern | A browser for coming back to it"
+    />
+    <meta
+      name="twitter:description"
+      content="Put a task aside. Keep your next step. Pick up where you left off."
+    />
+    <title>Tern | A browser for coming back to it</title>
+    <link rel="icon" href="/favicon.png" type="image/png" />
+    <link rel="icon" href="/brand/tern-icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="header wrap">
+      <a class="wordmark" href="#" aria-label="Tern home"
+        ><img src="/brand/tern-wordmark.png" alt="" width="1110" height="416" /></a
+      >
+      <nav aria-label="Main navigation">
+        <a href="#how-it-works">The idea</a><a href="#questions">Questions</a
+        ><a class="nav-cta" href="#alpha"
+          >Meet Tern <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+    </header>
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <p class="eyebrow">
+          <span class="status-dot"></span> A new place for unfinished work
+        </p>
+        <h1 id="hero-title">A browser for<br />coming <em>back to it.</em></h1>
+        <p class="hero-copy">
+          Life interrupts. Your browser should understand.<br
+            class="desktop-break"
+          />
+          Put a task aside with its pages and a note for your future self.
+        </p>
+        <a class="button primary" href="#demo"
+          >Try the idea <span aria-hidden="true">↓</span></a
+        >
+        <p class="hero-footnote">
+          Taking shape on Linux. Made for the work in between.
+        </p>
+      </section>
+      <section class="demo-section wrap" id="demo" aria-labelledby="demo-title">
+        <div class="demo-caption">
+          <h2 id="demo-title">A little room to pick up where you left off.</h2>
+          <span>INTERACTIVE PREVIEW <span aria-hidden="true">↙</span></span>
+        </div>
+        <div class="browser-demo">
+          <div class="browser-top">
+            <div class="window-dots" aria-hidden="true">
+              <i></i><i></i><i></i>
+            </div>
+            <span>tern / a place for your plans</span
+            ><span class="top-symbol" aria-hidden="true">⌘</span>
+          </div>
+          <div class="browser-body">
+            <aside class="task-sidebar" aria-label="Example task">
+              <div class="sidebar-heading">
+                Your tasks <span aria-hidden="true">⊞</span>
+              </div>
+              <div class="sidebar-label">
+                ACTIVE <span id="active-count">2</span>
+              </div>
+              <div class="task selected" id="trip-task">
+                <span class="task-icon" aria-hidden="true">◈</span
+                ><span
+                  >A weekend away<small
+                    >3 pages · a plan in progress</small
+                  ></span
+                ><span class="task-indicator"></span>
+              </div>
+              <div class="page-list" id="page-list">
+                <span><i class="page-dot teal"></i> Somewhere by the coast</span
+                ><span><i class="page-dot ochre"></i> The little cabin</span
+                ><span><i class="page-dot blue"></i> Getting there</span>
+              </div>
+              <div class="task second-task">
+                <span class="task-icon" aria-hidden="true">▤</span
+                ><span>Make room for reading<small>2 pages</small></span>
+              </div>
+              <div class="sidebar-label later-label">
+                LATER <span id="later-count">1</span>
+              </div>
+              <div class="later-trip" id="later-trip" hidden>
+                ◈ &nbsp; A weekend away
+              </div>
+              <div class="task muted-task">
+                <span class="task-icon" aria-hidden="true">○</span
+                ><span>A better desk setup</span>
+              </div>
+              <div class="sidebar-bottom">
+                <span class="avatar">Y</span> Your space
+                <span aria-hidden="true">⚙</span>
+              </div>
+            </aside>
+            <div class="demo-main">
+              <div class="address-bar">
+                <span aria-hidden="true">← &nbsp; → &nbsp; ↻</span>
+                <div>
+                  <span aria-hidden="true">▧</span> &nbsp; weekend.example/coast
+                </div>
+                <span aria-hidden="true">⋯</span>
+              </div>
+              <div class="example-page">
+                <div class="sample-nav">
+                  <strong>the long weekend</strong
+                  ><span>Places &nbsp; / &nbsp; Field notes</span>
+                </div>
+                <p class="sample-eyebrow">LESS PLANNING. MORE SEA AIR.</p>
+                <h3>Somewhere<br />by the coast.</h3>
+                <p class="sample-copy">
+                  A quiet cabin, a long walk, and absolutely<br />nothing booked
+                  for Sunday.
+                </p>
+                <div class="coast-art" aria-hidden="true">
+                  <div class="sun"></div>
+                  <div class="sea sea-back"></div>
+                  <div class="sea sea-front"></div>
+                  <div class="land"></div>
+                  <span>38° 40′ S &nbsp; 143° 06′ E</span>
+                </div>
+              </div>
+              <div class="resume-card" id="resume-card">
+                <div class="note-header">
+                  <span class="note-icon" aria-hidden="true">↳</span
+                  ><span>A note for when you're back</span
+                  ><span class="note-tag">YOUR NEXT STEP</span>
+                </div>
+                <label class="sr-only" for="next-step"
+                  >Your next-step note</label
+                ><textarea id="next-step" maxlength="180" rows="2">
+The little cabin looks good. Check the train times before booking.</textarea>
+                <div class="note-actions">
+                  <p>
+                    Edit the note, then put this task aside.
+                  </p>
+                  <button
+                    class="button primary small"
+                    id="pause-button"
+                    type="button"
+                  >
+                    Put aside <span aria-hidden="true">↗</span>
+                  </button>
+                </div>
+              </div>
+              <div class="paused-view" id="paused-view" hidden>
+                <span class="paused-symbol" aria-hidden="true">↗</span>
+                <p class="eyebrow">THERE'S TIME FOR THIS LATER</p>
+                <h3>A weekend away<br />can wait.</h3>
+                <p>Your pages are together. Your next step is here.</p>
+                <blockquote id="saved-note"></blockquote>
+                <button class="button primary" id="resume-button" type="button">
+                  Pick it back up <span aria-hidden="true">↩</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="under-demo">
+          <span id="demo-status" role="status" aria-live="polite" aria-atomic="true"
+            >Try it: leave a note for when you come back.</span
+          ><span>A sample interaction, right here in your browser.</span>
+        </div>
+      </section>
+      <section class="idea-section wrap" id="how-it-works">
+        <div class="section-intro">
+          <p class="eyebrow">LESS “WHERE WAS I?”</p>
+          <h2>Leave a thread.<br /><em>Find it again.</em></h2>
+          <p>
+            A tab tells you where you were.<br />A task helps you remember what
+            you were doing.
+          </p>
+        </div>
+        <div class="steps">
+          <article>
+            <span class="step-number">01</span>
+            <div>
+              <h3>Give the work a name.</h3>
+              <p>
+                Planning a trip. Comparing a few options. Finishing that form.
+                Keep the pages for one piece of work together.
+              </p>
+            </div>
+          </article>
+          <article>
+            <span class="step-number">02</span>
+            <div>
+              <h3>Put it aside, on purpose.</h3>
+              <p>
+                Leave a quick note about your next step and move the task to
+                Later. You don't have to finish everything today.
+              </p>
+            </div>
+          </article>
+          <article>
+            <span class="step-number">03</span>
+            <div>
+              <h3>Return with a place to start.</h3>
+              <p>
+                Open the task, find your pages and read your note. When you're
+                done, mark it Settled.
+              </p>
+            </div>
+          </article>
+        </div>
+      </section>
+      <section class="principles wrap">
+        <div class="principle-copy">
+          <p class="eyebrow">A LITTLE HELP. ON YOUR TERMS.</p>
+          <h2>Your browser.<br /><em>Your train of thought.</em></h2>
+          <p>
+            Optional local AI helps describe your tasks and suggest a next
+            search. Your saved notes and findings stay useful with AI off, too.
+          </p>
+          <a class="text-link" href="#questions"
+            >A few things to know <span aria-hidden="true">↗</span></a
+          >
+        </div>
+        <div class="local-note">
+          <span class="local-icon" aria-hidden="true">✳</span>
+          <h3>Thinking stays here.</h3>
+          <p>
+            Task assistance runs on your device. No AI account or API key
+            needed.
+          </p>
+          <div class="local-footer">
+            <span class="status-dot"></span> Local assistance
+            <span>Optional, always.</span>
+          </div>
+        </div>
+      </section>
+      <section class="faq wrap" id="questions">
+        <div>
+          <p class="eyebrow">BEFORE YOU SETTLE IN</p>
+          <h2>A few good questions.</h2>
+        </div>
+        <div class="faq-list">
+          <details>
+            <summary>
+              Is Tern a browser or an extension?<span aria-hidden="true"
+                >+</span
+              >
+            </summary>
+            <p>
+              Tern is a standalone desktop browser with real Chromium pages.
+              Tasks give your usual websites a place alongside your notes and
+              next steps.
+            </p>
+          </details>
+          <details>
+            <summary>
+              What happens when I put a task aside?<span aria-hidden="true"
+                >+</span
+              >
+            </summary>
+            <p>
+              The task moves to Later, with its pages and your saved note. Live
+              pages stay running while Tern stays open. Putting a task aside
+              does not save a form or submit anything to a website.
+            </p>
+          </details>
+          <details>
+            <summary>
+              Will everything survive a restart?<span aria-hidden="true"
+                >+</span
+              >
+            </summary>
+            <p>
+              Your tasks, saved notes and page addresses survive a restart.
+              Pages reopen from their addresses. Unsaved form edits and live
+              website state do not survive quitting, so save your work on the
+              website first.
+            </p>
+          </details>
+          <details>
+            <summary>
+              Do I have to use AI?<span aria-hidden="true">+</span>
+            </summary>
+            <p>
+              No. Browsing, tasks, notes and saved findings work with AI off.
+              Optional assistance uses a local model. It uses task context such
+              as notes, page titles and saved findings, without automatically
+              reading page bodies or form fields. First use downloads the model.
+            </p>
+          </details>
+          <details>
+            <summary>
+              Can I download Tern yet?<span aria-hidden="true">+</span>
+            </summary>
+            <p>
+              Tern is a local Linux alpha. There isn't a public download yet.
+              The interaction above is a small demonstration of putting a task
+              aside and resuming it, not the full browser.
+            </p>
+          </details>
+        </div>
+      </section>
+      <section class="closing" id="alpha">
+        <div class="wrap">
+          <p class="eyebrow">
+            <span class="status-dot"></span> EARLY DAYS. A CLEAR IDEA.
+          </p>
+          <h2>You don't have to<br />finish it <em>all today.</em></h2>
+          <p>
+            Tern is taking shape as a Linux desktop browser.<br />For now, try
+            putting something aside.
+          </p>
+          <a class="button primary" href="#demo"
+            >Take it for a small spin <span aria-hidden="true">↗</span></a
+          ><span class="alpha-note"
+            >Linux alpha · Public download not yet available</span
+          >
+        </div>
+      </section>
+    </main>
+    <footer class="footer wrap">
+      <a class="wordmark" href="#" aria-label="Tern home"
+        ><img src="/brand/tern-wordmark.png" alt="" width="1110" height="416" /></a
+      >
+      <p>A place for your unfinished work.</p>
+      <a href="#main">Back to the top ↑</a>
+    </footer>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

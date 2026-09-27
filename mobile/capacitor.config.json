@@ -1,0 +1,8 @@
+{
+  "appId": "app.tern.browser",
+  "appName": "Tern",
+  "webDir": "dist",
+  "server": { "androidScheme": "https" },
+  "android": { "backgroundColor": "#181b1e", "allowMixedContent": false, "captureInput": true },
+  "plugins": { "SplashScreen": { "launchShowDuration": 0 } }
+}

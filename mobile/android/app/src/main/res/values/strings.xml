@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Tern</string>
+    <string name="title_activity_main">Tern</string>
+    <string name="package_name">app.tern.browser</string>
+    <string name="custom_url_scheme">app.tern.browser</string>
+</resources>

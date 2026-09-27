@@ -7,7 +7,14 @@ import {
   type Page,
 } from "@playwright/test";
 import { createServer, type Server } from "node:http";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import {
+  mkdtemp,
+  rm,
+  mkdir,
+  writeFile,
+  readdir,
+  readFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -64,6 +71,10 @@ test.beforeAll(async () => {
       return;
     }
     res.setHeader("Content-Type", "text/html");
+    if (/^\/tabs\/\d$/.test(req.url ?? "")) {
+      res.end(`<title>Tab ${req.url!.slice(-1)}</title><input aria-label="Draft">`);
+      return;
+    }
     if (req.url === "/post") {
       let body = "";
       req.on("data", (chunk) => (body += chunk));
@@ -99,7 +110,7 @@ test.beforeAll(async () => {
       return;
     }
     res.end(
-      `<html><title>${req.url === "/second" ? "Second page" : "Expense claim"}</title><body><h1>${req.url === "/second" ? "Second page" : "Expense claim"}</h1><label>Amount <input aria-label="Amount" /></label><a href="/second">Next page</a><a href="/second" target="_blank">Open reference</a><a href="/download">Download receipt</a><button onclick="document.querySelector('output').textContent = typeof window.trailrest + '/' + typeof require">Check isolation</button><output></output></body></html>`,
+      `<html><title>${req.url === "/second" ? "Second page" : "Expense claim"}</title><body><h1>${req.url === "/second" ? "Second page" : "Expense claim"}</h1><label>Amount <input aria-label="Amount" /></label><a href="/second">Next page</a><a href="/second" target="_blank">Open reference</a><a href="/download">Download receipt</a><button onclick="document.querySelector('output').textContent = typeof window.tern + '/' + typeof require">Check isolation</button><output></output></body></html>`,
     );
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -207,13 +218,16 @@ test.afterAll(async () => {
 });
 async function launch(themeDirectory?: string) {
   app = await electron.launch({
+    ...(process.env.TERN_EXECUTABLE
+      ? { executablePath: process.env.TERN_EXECUTABLE }
+      : {}),
     args: ["."],
     cwd: process.cwd(),
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "",
-      TRAILREST_PROFILE: profile,
-      ...(themeDirectory ? { TRAILREST_THEME_DIR: themeDirectory } : {}),
+      TERN_PROFILE: profile,
+      ...(themeDirectory ? { TERN_THEME_DIR: themeDirectory } : {}),
     },
     chromiumSandbox: true,
   });
@@ -241,7 +255,8 @@ async function launch(themeDirectory?: string) {
   }
 }
 test.beforeEach(async () => {
-  profile = await mkdtemp(join(tmpdir(), "trailrest-test-"));
+  profile = await mkdtemp(join(tmpdir(), "tern-test-"));
+  await writeFile(join(profile, "preferences.json"), JSON.stringify({ summaryModel: "" }));
   await launch();
 });
 test.afterEach(async () => {
@@ -283,9 +298,12 @@ async function nativeShortcut(
   );
 }
 async function newTask(name: string) {
-  await shell.getByRole("button", { name: "New task", exact: true }).click();
-  await shell.getByLabel("Task name", { exact: true }).fill(name);
-  await shell.getByRole("button", { name: "Create task", exact: true }).click();
+  await shell
+    .getByRole("textbox", { name: "New task", exact: true })
+    .fill(name);
+  await shell
+    .getByRole("textbox", { name: "New task", exact: true })
+    .press("Enter");
   await expect(shell.getByRole("dialog")).not.toBeVisible();
   await expect(
     shell.getByRole("button", { name: `Select task ${name}`, exact: true }),
@@ -294,6 +312,76 @@ async function newTask(name: string) {
     shell.getByRole("textbox", { name: "Address or search" }),
   ).toHaveValue("");
 }
+test("tasks are created inline and travel from the input into the list", async () => {
+  const input = shell.getByRole("textbox", { name: "New task", exact: true });
+  await shell.getByRole("button", { name: "Create your first task" }).click();
+  await expect(shell.getByRole("heading", { name: "What do you need to do?", exact: true })).toBeVisible();
+  await shell.getByRole("button", { name: "Cancel", exact: true }).click();
+  await input.focus();
+  await expect(input).toBeFocused();
+  await expect(shell.locator("#new-task-hint")).toBeVisible();
+  await expect(shell.getByRole("dialog")).not.toBeVisible();
+  await input.fill("   ");
+  await input.press("Enter");
+  await expect(shell.locator("[data-task-id]")).toHaveCount(0);
+  await input.fill("Cancelled draft");
+  await input.press("Escape");
+  await expect(input).toHaveValue("");
+  await expect(shell.locator("#new-task-hint")).not.toBeVisible();
+
+  await newTask("First task");
+  await expect(shell.locator(".task-arrival")).toHaveCount(0);
+  await shell.getByLabel("Search tasks and pages").fill("No matching task");
+  await input.fill("Second task");
+  await shell.screenshot({ path: "../design/qa/desktop-new-task-input.png" });
+  // Hold the real animation at its origin to inspect both ends without timing races.
+  await shell.evaluate(() => {
+    const observer = new MutationObserver(() => {
+      if (!document.querySelector(".task-arrival")) return;
+      for (const animation of document.getAnimations()) {
+        animation.pause();
+        animation.currentTime = 0;
+      }
+      observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true });
+  });
+  await input.press("Enter");
+  await expect(input).toHaveValue("");
+  await input.press("Enter");
+  await expect(shell.locator("[data-task-id]")).toHaveCount(2);
+  await expect(shell.getByLabel("Search tasks and pages")).toHaveValue("");
+  const origin = await shell.locator(".new-task").boundingBox();
+  const flight = await shell.locator(".task-arrival").boundingBox();
+  const destination = await shell
+    .locator(".task.selected[data-task-id]")
+    .boundingBox();
+  expect(flight!.y).toBeCloseTo(origin!.y, 0);
+  expect(destination!.y).toBeGreaterThan(origin!.y + origin!.height);
+  await shell.evaluate(() => {
+    for (const animation of document.getAnimations())
+      animation.currentTime = 160;
+  });
+  const midway = await shell.locator(".task-arrival").boundingBox();
+  expect(midway!.y).toBeGreaterThan(origin!.y);
+  expect(midway!.y).toBeLessThan(destination!.y);
+  await shell.screenshot({
+    path: "../design/qa/desktop-new-task-arriving.png",
+  });
+  await shell.evaluate(() => {
+    for (const animation of document.getAnimations()) animation.finish();
+  });
+  await expect(shell.locator(".task-arrival")).toHaveCount(0);
+  await expect(
+    shell.getByRole("button", { name: "Select task Second task" }),
+  ).toHaveAttribute("aria-current", "true");
+  await expect(input).toBeFocused();
+
+  await shell.emulateMedia({ reducedMotion: "reduce" });
+  await newTask("Third task");
+  await expect(shell.locator(".task-arrival")).toHaveCount(0);
+  await shell.screenshot({ path: "../design/qa/desktop-new-task-created.png" });
+});
 async function navigate(url: string) {
   await shell.getByRole("textbox", { name: "Address or search" }).fill(url);
   await shell
@@ -328,14 +416,17 @@ test("a renderer crash becomes a reference to reopen, not a live page", async ()
   await newTask("Recover a page");
   const website = await navigate(origin + "/");
   await website.getByLabel("Amount").fill("Unsaved value");
-  await app.evaluate(
-    ({ webContents }, url) =>
-      webContents
-        .getAllWebContents()
-        .find((contents) => contents.getURL() === url)!
-        .forcefullyCrashRenderer(),
-    origin + "/",
-  );
+  // Terminate only this isolated fixture renderer. forcefullyCrashRenderer()
+  // did not terminate it under the current Electron/CDP test session.
+  await app.evaluate(({ webContents }, url) => {
+    const contents = webContents
+      .getAllWebContents()
+      .find((contents) => contents.getURL() === url)!;
+    const pid = contents.getOSProcessId();
+    if (pid <= 0 || pid === process.pid)
+      throw new Error("Invalid fixture renderer process.");
+    process.kill(pid, "SIGKILL");
+  }, origin + "/");
   await expect(
     shell.getByText("This page stopped unexpectedly. Reopen it to continue.", {
       exact: true,
@@ -470,28 +561,212 @@ test("website unload veto can cancel closing after the browser confirmation", as
     shell.locator('.pages button[aria-label^="Select page "]'),
   ).toHaveCount(0);
 });
-test("settling keeps live pages, permissions are denied, and guest keyboard shortcuts reach the shell", async () => {
+test("canvas drawing and clipboard writing are enabled by default while clipboard reading is denied", async () => {
+  await newTask("Browser defaults");
+  const website = await navigate(origin + "/permission");
+  const defaults = await website.evaluate(async () => {
+    const context = document.createElement("canvas").getContext("2d")!;
+    const write = await navigator.permissions.query({ name: "clipboard-write" as PermissionName });
+    const read = await navigator.permissions.query({ name: "clipboard-read" as PermissionName });
+    let readResult = "allowed";
+    try {
+      await navigator.clipboard.readText();
+    } catch (error) {
+      readResult = (error as DOMException).name;
+    }
+    return {
+      canvas: "drawElementImage" in context,
+      write: write.state,
+      read: read.state,
+      readResult,
+    };
+  });
+  expect(defaults).toEqual({
+    canvas: true,
+    write: "granted",
+    read: "denied",
+    readResult: "NotAllowedError",
+  });
+});
+
+test("notifications are denied and guest keyboard shortcuts reach the shell", async () => {
   await newTask("Review permissions");
   const website = await navigate(origin + "/permission");
   await website.getByRole("button", { name: "Request notifications" }).click();
   await expect(website.locator("output")).toHaveText("denied");
   await expect(shell.getByRole("alert")).toContainText(
-    "permissions are disabled",
+    "permission is disabled",
   );
   await nativeShortcut(website, "L");
   await expect(
     shell.getByRole("textbox", { name: "Address or search" }),
   ).toBeFocused();
-  await shell.getByRole("button", { name: "Settle", exact: true }).click();
-  await shell.getByRole("button", { name: "Settle task", exact: true }).click();
-  await shell
-    .getByRole("button", { name: "Settled tasks", exact: true })
-    .click();
+});
+
+for (const action of ["button", "menu", "status", "drag"] as const) {
+  test(`settling via ${action} unloads every owned tab and keeps references`, async () => {
+    await newTask("Other work");
+    const other = await navigate(origin + "/other");
+    await other.getByLabel("Amount").fill("Keep this draft");
+    await newTask("Finished work");
+    const first = await navigate(origin + "/");
+    await first.getByRole("link", { name: "Open reference", exact: true }).click();
+    await expect.poll(() => app.context().pages().some(page => page.url() === origin + "/second")).toBe(true);
+    const second = app.context().pages().find(page => page.url() === origin + "/second")!;
+    await expect(second.getByRole("heading", { name: "Second page" })).toBeVisible();
+    const task = shell.getByRole("button", { name: "Select task Finished work", exact: true });
+    if (action === "button") {
+      await shell.getByRole("button", { name: "Settle", exact: true }).click();
+    } else if (action === "menu") {
+      await shell.getByRole("button", { name: "Select task Other work", exact: true }).click();
+      await task.click({ button: "right" });
+      await shell.getByRole("menuitem", { name: "Settle task", exact: true }).click();
+    } else if (action === "status") {
+      await shell.getByLabel("Task status", { exact: true }).selectOption("Settled");
+    } else {
+      await task.dragTo(shell.getByRole("button", { name: "Settled tasks", exact: true }));
+    }
+    await expect.poll(() => [first.isClosed(), second.isClosed()]).toEqual([true, true]);
+    await expect(other.getByLabel("Amount")).toHaveValue("Keep this draft");
+    await shell.getByRole("button", { name: "Settled tasks", exact: true }).click();
+    await task.click();
+    await expect(shell.getByRole("button", { name: "Select page Expense claim", exact: true })).toBeVisible();
+    await expect(shell.getByRole("button", { name: "Select page Second page", exact: true })).toBeVisible();
+    await expect(shell.getByRole("heading", { name: "Reopen this reference" })).toBeVisible();
+    await shell.getByRole("button", { name: "Resume task", exact: true }).click();
+    await shell.getByRole("button", { name: "Reopen page", exact: true }).click();
+    await expect.poll(() => app.context().pages().some(page => page.url() === origin + "/second")).toBe(true);
+    const reopened = app.context().pages().find(page => page.url() === origin + "/second")!;
+    await expect(reopened.getByRole("heading", { name: "Second page" })).toBeVisible();
+    expect(first.isClosed()).toBe(true);
+  });
+}
+
+async function snapshotFolder() {
+  const destination = join(profile, "snapshots");
+  await shell.getByRole("button", { name: "Settings", exact: true }).click();
+  await app.evaluate(({ dialog }, destination) => {
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [destination],
+    });
+    dialog.showSaveDialogSync = () => {
+      throw new Error("Snapshots should save directly");
+    };
+  }, destination);
+  await shell.getByRole("button", { name: "Change download folder" }).click();
+  await expect(shell.getByText(destination, { exact: true })).toBeVisible();
+  await shell.getByLabel("Hide the address bar while scrolling down").uncheck();
+  await shell.getByRole("button", { name: "Back to browsing" }).click();
+  return destination;
+}
+
+test("snapshot captures the visible website as a PNG and confirms the saved file", async () => {
+  const camera = shell.getByRole("button", {
+    name: "Take snapshot",
+    exact: true,
+  });
+  await expect(camera).toBeDisabled();
+  const destination = await snapshotFolder();
+  await newTask("Snapshot check");
+  const website = await navigate(origin + "/scroll");
+  await website.getByRole("heading", { name: "Scroll sample" }).waitFor();
+  await website.evaluate(() => {
+    document.body.style.background = "rgb(12, 34, 56)";
+    window.scrollTo(0, 500);
+  });
+  // Chromium may round a requested scroll to a fractional CSS pixel at desktop scaling.
+  await expect
+    .poll(() => website.evaluate(() => window.scrollY))
+    .toBeCloseTo(500, 0);
+  const scrollBeforeCapture = await website.evaluate(() => window.scrollY);
+  const viewport = await website.evaluate(() => ({
+    width: innerWidth * devicePixelRatio,
+    height: innerHeight * devicePixelRatio,
+  }));
+  await camera.click();
+  await expect(shell.getByRole("alert")).toContainText(
+    `Snapshot saved to ${destination}`,
+  );
+  await expect(camera).toHaveClass(/snapshot-saved/);
+  const files = await readdir(destination);
+  expect(files).toHaveLength(1);
+  expect(files[0]).toMatch(/^Snapshot-.*\.png$/);
+  const path = join(destination, files[0]);
+  const png = await readFile(path);
+  expect(png.subarray(0, 8).toString("hex")).toBe("89504e470d0a1a0a");
+  // Physical image bounds round to whole pixels; CSS viewport bounds may not.
+  expect(Math.abs(png.readUInt32BE(16) - viewport.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(png.readUInt32BE(20) - viewport.height)).toBeLessThanOrEqual(1);
+  const pixel = await app.evaluate(({ nativeImage }, path) => {
+    const image = nativeImage.createFromPath(path);
+    return [...image.toBitmap().subarray(0, 4)];
+  }, path);
+  expect(pixel).toEqual([56, 34, 12, 255]);
+  await expect
+    .poll(() => website.evaluate(() => window.scrollY))
+    .toBe(scrollBeforeCapture);
+  const evidence = await app.evaluate(async ({ BrowserWindow }) =>
+    (await BrowserWindow.getAllWindows()[0].capturePage())
+      .toPNG()
+      .toString("base64"),
+  );
+  await writeFile(
+    "../design/qa/desktop-snapshot.png",
+    Buffer.from(evidence, "base64"),
+  );
+  await expect(camera).toHaveClass(/snapshot-idle/);
+  await camera.click();
+  await expect.poll(async () => (await readdir(destination)).length).toBe(2);
+  expect(await readFile(path)).toEqual(png);
+  await shell.getByRole("button", { name: "Downloads", exact: true }).click();
+  await expect(shell.getByText(files[0], { exact: true })).toBeVisible();
+  await expect(shell.getByText("Completed", { exact: true })).toHaveCount(2);
+});
+
+test("snapshot tool visibility persists across restart", async () => {
+  await shell.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(shell.getByLabel("Show snapshot button")).toBeChecked();
+  await shell.getByLabel("Show snapshot button").uncheck();
   await expect(
-    shell.getByRole("button", { name: "Resume task", exact: true }),
+    shell.getByRole("button", { name: "Take snapshot" }),
+  ).toHaveCount(0);
+  await app.close();
+  await launch();
+  await expect(
+    shell.getByRole("button", { name: "Take snapshot" }),
+  ).toHaveCount(0);
+  await shell.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(shell.getByLabel("Show snapshot button")).not.toBeChecked();
+  await shell.getByLabel("Show snapshot button").check();
+  await expect(
+    shell.getByRole("button", { name: "Take snapshot" }),
   ).toBeVisible();
-  await shell.getByRole("button", { name: "Resume task", exact: true }).click();
-  await expect(website.locator("output")).toHaveText("denied");
+  await expect(
+    shell.getByRole("button", { name: "Take snapshot" }),
+  ).toBeDisabled();
+});
+
+test("snapshot save failures show an error and allow retry", async () => {
+  const destination = await snapshotFolder();
+  await writeFile(destination, "A file is blocking this folder");
+  await newTask("Snapshot retry");
+  const website = await navigate(origin + "/");
+  await website.getByLabel("Amount").fill("318.20");
+  const camera = shell.getByRole("button", { name: "Take snapshot" });
+  await camera.click();
+  await expect(shell.getByRole("alert")).toContainText(
+    "Could not save the snapshot",
+  );
+  await expect(camera).toHaveClass(/snapshot-idle/);
+  await expect(website.getByLabel("Amount")).toHaveValue("318.20");
+  await shell.getByRole("button", { name: "Downloads", exact: true }).click();
+  await expect(shell.getByText("No downloads in this session.")).toBeVisible();
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  await rm(destination);
+  await camera.click();
+  await expect(shell.getByRole("alert")).toContainText("Snapshot saved to");
+  await expect.poll(async () => (await readdir(destination)).length).toBe(1);
 });
 
 test("downloads show cancellation and completion without opening files", async () => {
@@ -572,7 +847,7 @@ test("keyboard dialogs, find, resizing and canceled quit keep the live page usab
   await expect(website.getByLabel("Amount")).toHaveValue("318.20");
 });
 
-test("dragging tasks between collapsed groups retains live edits and persists the move", async () => {
+test("dragging to Later retains edits, settling unloads pages, and moves persist", async () => {
   await newTask("Move this work");
   const website = await navigate(origin + "/");
   await website.getByLabel("Amount").fill("712");
@@ -596,9 +871,10 @@ test("dragging tasks between collapsed groups retains live edits and persists th
       .getByRole("region", { name: "Later tasks", exact: true })
       .getByRole("button", { name: "Select task Move this work" }),
   ).toBeVisible();
+  await expect(website.getByLabel("Amount")).toHaveValue("712");
   await taskButton().dragTo(settled);
   await settled.click();
-  await expect(website.getByLabel("Amount")).toHaveValue("712");
+  await expect.poll(() => website.isClosed()).toBe(true);
   await taskButton().dragTo(
     shell.getByRole("region", { name: "Active tasks", exact: true }),
   );
@@ -607,7 +883,7 @@ test("dragging tasks between collapsed groups retains live edits and persists th
       .getByRole("region", { name: "Active tasks", exact: true })
       .getByRole("button", { name: "Select task Move this work" }),
   ).toBeVisible();
-  await expect(website.getByLabel("Amount")).toHaveValue("712");
+  await expect(shell.getByRole("heading", { name: "Reopen this reference" })).toBeVisible();
   await taskButton().dragTo(later());
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBoxSync = () => 1;
@@ -654,13 +930,13 @@ test("Alt hints switch tasks and tabs from websites and reveal a collapsed task"
   ).toHaveValue("");
   const second = await navigate(origin + "/second");
   await altInput(second, "Alt");
-  await expect(shell.locator("kbd")).toHaveText(["A", "1", "2"]);
+  await expect(shell.locator(".task kbd")).toHaveText(["A", "1", "2"]);
   await altInput(second, "1");
   await expect(
     shell.getByRole("textbox", { name: "Address or search" }),
   ).toHaveValue(origin + "/");
   await altInput(shell, "Alt", "keyUp");
-  await expect(shell.locator("kbd")).toHaveCount(0);
+  await expect(shell.locator(".task kbd")).toHaveCount(0);
   await expect(first.getByLabel("Amount")).toHaveValue("42");
   await newTask("Second task");
   await shell.getByLabel("Task status", { exact: true }).selectOption("Later");
@@ -706,8 +982,8 @@ test("the shell follows theme changes while the address bar stays dark and conte
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "",
-      TRAILREST_PROFILE: profile,
-      TRAILREST_THEME_DIR: themeDirectory,
+      TERN_PROFILE: profile,
+      TERN_THEME_DIR: themeDirectory,
     },
     chromiumSandbox: true,
   });
@@ -737,7 +1013,9 @@ test("the shell follows theme changes while the address bar stays dark and conte
     "background-color",
     "rgb(16, 19, 21)",
   );
-  const top = await shell.locator(".website").boundingBox();
+  const top = await shell
+    .getByRole("region", { name: "Task overview" })
+    .boundingBox();
   expect(top?.y).toBeCloseTo(56, 1);
   await writeFile(
     join(themeDirectory, "theme/colors.toml"),
@@ -894,10 +1172,10 @@ test("browser settings persist and change search, zoom, downloads and sidebar", 
     }),
   );
   const address = shell.getByRole("textbox", { name: "Address or search" });
-  await address.fill("trailrest sample query");
+  await address.fill("tern sample query");
   await address.press("Enter");
   await expect(address).toHaveValue(
-    "https://www.google.com/search?q=trailrest%20sample%20query",
+    "https://www.google.com/search?q=tern%20sample%20query",
   );
   const website = await navigate(origin + "/");
   await website.getByRole("link", { name: "Download receipt" }).click();
@@ -1231,4 +1509,361 @@ test("extension popups and worker shortcuts fill only the selected live page", a
   await nativeShortcut(popup, "Escape", []);
   await first.getByRole("button", { name: "Check isolation" }).click();
   await expect(first.locator("output")).toHaveText("undefined/undefined");
+});
+
+async function multiTabs() {
+  await newTask("Tab selection");
+  const websites: Page[] = [];
+  for (let number = 1; number <= 4; number++) {
+    if (number > 1) await shell.getByRole("button", { name: "New page", exact: true }).click();
+    const website = await navigate(`${origin}/tabs/${number}`);
+    await website.getByLabel("Draft").fill(`Draft ${number}`);
+    websites.push(website);
+  }
+  return {
+    websites,
+    tab: (number: number) => shell.getByRole("button", { name: `Select page Tab ${number}`, exact: true }),
+    // Compare selection content without depending on framework whitespace nodes.
+    selected: async () => (await shell.locator('.pages button[aria-pressed="true"]').allTextContents())
+      .map(text => text.trim().replace(/\s+([●○])/g, "$1")),
+  };
+}
+
+test("Ctrl toggles tabs and Shift selects anchored ranges within a task", async () => {
+  const { tab, selected } = await multiTabs();
+  await tab(1).click();
+  await tab(3).click({ modifiers: ["Control"] });
+  await expect.poll(selected).toEqual(["Tab 1●", "Tab 3●"]);
+  await tab(3).click({ modifiers: ["Control"] });
+  await expect.poll(selected).toEqual(["Tab 1●"]);
+  await tab(1).click();
+  await tab(4).click({ modifiers: ["Shift"] });
+  await expect.poll(selected).toEqual(["Tab 1●", "Tab 2●", "Tab 3●", "Tab 4●"]);
+  await tab(2).click({ modifiers: ["Shift"] });
+  await expect.poll(selected).toEqual(["Tab 1●", "Tab 2●"]);
+  await tab(4).click();
+  await tab(2).click({ modifiers: ["Shift"] });
+  await expect.poll(selected).toEqual(["Tab 2●", "Tab 3●", "Tab 4●"]);
+  await tab(2).click();
+  await tab(4).click({ modifiers: ["Control"] });
+  await tab(3).click({ modifiers: ["Control", "Shift"] });
+  await expect.poll(selected).toEqual(["Tab 2●", "Tab 3●", "Tab 4●"]);
+  await shell.screenshot({ path: "/tmp/tern-multiselect.png" });
+  await tab(1).click();
+  await expect.poll(selected).toEqual(["Tab 1●"]);
+  await tab(3).click({ modifiers: ["Control"] });
+  await newTask("Separate selection");
+  await shell.getByRole("button", { name: "Select task Tab selection", exact: true }).click();
+  await expect.poll(selected).toEqual(["Tab 3●"]);
+});
+
+test("selected tab menus copy, reload and duplicate the group", async () => {
+  const { tab, websites, selected } = await multiTabs();
+  await tab(1).click();
+  await tab(3).click({ modifiers: ["Control"] });
+  // An unselected tab keeps its individual menu without changing the group.
+  await tab(2).click({ button: "right" });
+  await expect(shell.getByRole("menuitem", { name: "Close tab", exact: true })).toBeVisible();
+  await shell.keyboard.press("Escape");
+  await expect.poll(selected).toEqual(["Tab 1●", "Tab 3●"]);
+  await app.evaluate(({ clipboard, dialog }) => {
+    clipboard.writeText = text => { (globalThis as any).copiedPageAddress = text; };
+    dialog.showMessageBoxSync = () => 0;
+  });
+  await tab(1).focus();
+  await tab(1).press("Shift+F10");
+  await expect(shell.getByRole("menu", { name: "2 tabs selected", exact: true })).toBeVisible();
+  await shell.getByRole("menuitem", { name: "Copy addresses", exact: true }).click();
+  expect(await app.evaluate(() => (globalThis as any).copiedPageAddress)).toBe(`${origin}/tabs/1\n${origin}/tabs/3`);
+  await tab(1).click({ button: "right" });
+  await shell.getByRole("menuitem", { name: "Reload tabs", exact: true }).click();
+  await expect(websites[0].getByLabel("Draft")).toHaveValue("Draft 1");
+  await expect(websites[2].getByLabel("Draft")).toHaveValue("Draft 3");
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; });
+  await tab(1).click({ button: "right" });
+  await shell.getByRole("menuitem", { name: "Reload tabs", exact: true }).click();
+  await expect(websites[0].getByLabel("Draft")).toHaveValue("");
+  await expect(websites[2].getByLabel("Draft")).toHaveValue("");
+  await expect(websites[1].getByLabel("Draft")).toHaveValue("Draft 2");
+  await shell.getByRole("button", { name: "Task overview", exact: true }).click();
+  await tab(1).click({ button: "right" });
+  await shell.getByRole("menuitem", { name: "Duplicate tabs", exact: true }).click();
+  await expect(shell.getByRole("region", { name: "Task overview", exact: true })).not.toBeVisible();
+  await expect(tab(1)).toHaveCount(2);
+  await expect(tab(3)).toHaveCount(2);
+  await expect.poll(selected).toEqual(["Tab 1●", "Tab 3●"]);
+  await expect(tab(1).nth(1)).toHaveAttribute("aria-pressed", "true");
+  await expect(tab(3).nth(1)).toHaveAttribute("aria-current", "page");
+});
+
+for (const source of ["shell", "website"] as const) {
+  test(`Ctrl+W from the ${source} closes only selected tabs after one confirmation`, async () => {
+    const { tab, websites, selected } = await multiTabs();
+    await tab(1).click();
+    await tab(3).click({ modifiers: ["Control"] });
+    await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
+    await shell.getByRole("button", { name: "Close selected tabs", exact: true }).click();
+    await expect.poll(selected).toEqual(["Tab 1●", "Tab 3●"]);
+    await expect(websites[0].getByLabel("Draft")).toHaveValue("Draft 1");
+    await app.evaluate(({ dialog }) => {
+      (globalThis as any).closeConfirmations = [];
+      dialog.showMessageBoxSync = (_window, options) => {
+        (globalThis as any).closeConfirmations.push(options.message);
+        return 1;
+      };
+    });
+    await nativeShortcut(source === "shell" ? shell : websites[2], "W");
+    await expect.poll(() => [websites[0].isClosed(), websites[2].isClosed()]).toEqual([true, true]);
+    expect(await app.evaluate(() => (globalThis as any).closeConfirmations)).toEqual(["Close 2 tabs?"]);
+    await expect(tab(1)).toHaveCount(0);
+    await expect(tab(3)).toHaveCount(0);
+    await expect(websites[1].getByLabel("Draft")).toHaveValue("Draft 2");
+    await expect(websites[3].getByLabel("Draft")).toHaveValue("Draft 4");
+    await expect.poll(selected).toEqual(["Tab 2●"]);
+  });
+}
+
+test("selected references reopen together after settlement", async () => {
+  const { tab, selected } = await multiTabs();
+  await shell.getByRole("button", { name: "Settle", exact: true }).click();
+  await shell.getByRole("button", { name: "Settled tasks", exact: true }).click();
+  await tab(1).click();
+  await tab(3).click({ modifiers: ["Control"] });
+  await expect.poll(selected).toEqual(["Tab 1○", "Tab 3○"]);
+  await tab(1).click({ button: "right" });
+  await shell.getByRole("menuitem", { name: "Reopen tabs", exact: true }).click();
+  await expect.poll(selected).toEqual(["Tab 1●", "Tab 3●"]);
+  await expect(tab(2)).toContainText("○");
+  await expect(tab(4)).toContainText("○");
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; });
+  await tab(1).click({ button: "right" });
+  await shell.getByRole("menuitem", { name: "Close tabs", exact: true }).click();
+  await expect(tab(1)).toHaveCount(0);
+  await expect(tab(3)).toHaveCount(0);
+  await expect(tab(2)).toBeVisible();
+});
+
+test("closing selected tabs respects a website unload veto", async () => {
+  await newTask("Guarded selection");
+  const guarded = await navigate(origin + "/guarded");
+  guarded.on("dialog", () => {});
+  await guarded.getByLabel("Draft").fill("Keep this draft");
+  await shell.getByRole("button", { name: "New page", exact: true }).click();
+  const other = await navigate(origin + "/tabs/1");
+  await shell.getByRole("button", { name: "Select page Unsaved draft", exact: true }).click({ modifiers: ["Control"] });
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBoxSync = (_window, options) => options.message === "Close 2 tabs?" ? 1 : 0;
+  });
+  await shell.getByRole("button", { name: "Close selected tabs", exact: true }).click();
+  await expect.poll(() => other.isClosed()).toBe(true);
+  await expect(guarded.getByLabel("Draft")).toHaveValue("Keep this draft");
+  await expect(shell.getByRole("button", { name: "Select page Unsaved draft", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
+
+test("tab mouse actions target the clicked page and preserve unsaved work", async () => {
+  await newTask("Mouse controls");
+  const first = await navigate(origin + "/");
+  await first.getByLabel("Amount").fill("Keep this draft");
+  const firstTab = shell.getByRole("button", {
+    name: "Select page Expense claim",
+    exact: true,
+  });
+  await firstTab.click({ button: "right" });
+  await expect(
+    shell.getByRole("menu", { name: "Expense claim" }),
+  ).toBeVisible();
+  const menuEvidence = await app.evaluate(async ({ BrowserWindow }) =>
+    (await BrowserWindow.getAllWindows()[0].capturePage())
+      .toPNG()
+      .toString("base64"),
+  );
+  await writeFile(
+    "../design/qa/desktop-tab-menu.png",
+    Buffer.from(menuEvidence, "base64"),
+  );
+  await shell
+    .getByRole("menuitem", { name: "Duplicate tab", exact: true })
+    .click();
+  await expect(firstTab).toHaveCount(2);
+  await expect
+    .poll(
+      () =>
+        app
+          .context()
+          .pages()
+          .filter((p) => p.url() === origin + "/").length,
+    )
+    .toBe(2);
+  const copy = app
+    .context()
+    .pages()
+    .find((p) => p !== first && p.url() === origin + "/")!;
+  await expect(copy.getByLabel("Amount")).toHaveValue("");
+  await expect(first.getByLabel("Amount")).toHaveValue("Keep this draft");
+  await expect(firstTab.nth(1)).toHaveClass("chosen");
+  await firstTab.nth(0).click({ button: "right" });
+  await expect(firstTab.nth(1)).toHaveClass("chosen");
+  // Observe only this explicit copy operation; don't read or overwrite the user's clipboard.
+  await app.evaluate(({ clipboard }) => {
+    clipboard.writeText = (text) => {
+      (globalThis as any).copiedPageAddress = text;
+    };
+  });
+  await shell
+    .getByRole("menuitem", { name: "Copy address", exact: true })
+    .click();
+  expect(await app.evaluate(() => (globalThis as any).copiedPageAddress)).toBe(
+    origin + "/",
+  );
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBoxSync = () => 0;
+  });
+  await firstTab.nth(0).click({ button: "middle" });
+  await expect(firstTab).toHaveCount(2);
+  await expect(first.getByLabel("Amount")).toHaveValue("Keep this draft");
+  await firstTab.nth(0).click({ button: "right" });
+  await shell
+    .getByRole("menuitem", { name: "Reload tab", exact: true })
+    .click();
+  await expect(first.getByLabel("Amount")).toHaveValue("Keep this draft");
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBoxSync = () => 1;
+  });
+  await firstTab.nth(0).click({ button: "middle" });
+  await expect(firstTab).toHaveCount(1);
+  await expect(firstTab).toHaveClass("chosen");
+  await firstTab.click({ button: "right" });
+  await shell.getByRole("menuitem", { name: "Close tab", exact: true }).click();
+  await expect(firstTab).toHaveCount(0);
+});
+
+test("task menus target inactive tasks and support keyboard dismissal", async () => {
+  await newTask("First mouse task");
+  const website = await navigate(origin + "/");
+  await website.getByLabel("Amount").fill("Still live");
+  await newTask("Current mouse task");
+  const current = shell.getByRole("button", {
+    name: "Select task Current mouse task",
+    exact: true,
+  });
+  const first = shell.getByRole("button", {
+    name: "Select task First mouse task",
+    exact: true,
+  });
+  await first.click({ button: "middle" });
+  await expect(current).toHaveAttribute("aria-current", "true");
+  await first.click({ button: "right" });
+  await expect(current).toHaveAttribute("aria-current", "true");
+  await shell
+    .getByRole("menuitem", { name: "Rename task…", exact: true })
+    .click();
+  await shell
+    .getByLabel("Task name", { exact: true })
+    .fill("Renamed mouse task");
+  await shell.getByRole("button", { name: "Save name", exact: true }).click();
+  const renamed = shell.getByRole("button", {
+    name: "Select task Renamed mouse task",
+    exact: true,
+  });
+  await expect(renamed).toBeVisible();
+  await expect(current).toHaveAttribute("aria-current", "true");
+  await renamed.focus();
+  await renamed.press("Shift+F10");
+  await expect(
+    shell.getByRole("menuitem", { name: "New tab", exact: true }),
+  ).toBeFocused();
+  await shell.keyboard.press("ArrowDown");
+  await expect(
+    shell.getByRole("menuitem", { name: "Rename task…", exact: true }),
+  ).toBeFocused();
+  await shell.keyboard.press("Escape");
+  await expect(shell.getByRole("menu")).toHaveCount(0);
+  await expect(renamed).toBeFocused();
+  await renamed.click({ button: "right" });
+  await shell
+    .getByRole("menuitem", { name: "Put aside…", exact: true })
+    .click();
+  await shell.getByLabel("Where I left off").fill("Continue this draft");
+  await shell
+    .getByRole("button", { name: "Put aside task", exact: true })
+    .click();
+  await expect(renamed).not.toBeVisible();
+  await shell.getByRole("button", { name: "Later tasks", exact: true }).click();
+  await renamed.click({ button: "right" });
+  await shell
+    .getByRole("menuitem", { name: "Return to active", exact: true })
+    .click();
+  await expect(
+    shell
+      .getByRole("region", { name: "Active tasks", exact: true })
+      .getByRole("button", { name: "Select task Renamed mouse task" }),
+  ).toBeVisible();
+  await renamed.click();
+  await expect(website.getByLabel("Amount")).toHaveValue("Still live");
+  await renamed.click({ button: "right" });
+  await shell.getByRole("textbox", { name: "Search tasks and pages" }).click();
+  await expect(shell.getByRole("menu")).toHaveCount(0);
+});
+
+test("middle-clicking a website link opens a background tab in its task", async () => {
+  await newTask("Read without switching");
+  const website = await navigate(origin + "/");
+  await website.getByLabel("Amount").fill("Keep reading");
+  await website
+    .getByRole("link", { name: "Next page", exact: true })
+    .click({ button: "middle" });
+  const next = shell.getByRole("button", {
+    name: "Select page Second page",
+    exact: true,
+  });
+  await expect(next).toBeVisible();
+  await expect(
+    shell.getByRole("button", {
+      name: "Select page Expense claim",
+      exact: true,
+    }),
+  ).toHaveClass("chosen");
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toHaveValue(origin + "/");
+  await expect(website.getByLabel("Amount")).toHaveValue("Keep reading");
+  await next.click();
+  await expect(
+    shell.getByRole("textbox", { name: "Address or search" }),
+  ).toHaveValue(origin + "/second");
+  await next.click({ button: "right" });
+  const second = app
+    .context()
+    .pages()
+    .find((p) => p.url() === origin + "/second")!;
+  const field = (await second.getByLabel("Amount").boundingBox())!;
+  // Native mouse input exercises the view boundary; CDP clicks do not transfer
+  // focus between Electron WebContents or run its native mouse hooks.
+  await app.evaluate(
+    ({ webContents }, { url, x, y }) => {
+      const contents = webContents
+        .getAllWebContents()
+        .find((item) => item.getURL() === url)!;
+      contents.sendInputEvent({
+        type: "mouseDown",
+        button: "left",
+        clickCount: 1,
+        x,
+        y,
+      });
+      contents.sendInputEvent({
+        type: "mouseUp",
+        button: "left",
+        clickCount: 1,
+        x,
+        y,
+      });
+    },
+    {
+      url: second.url(),
+      x: Math.round(field.x + field.width / 2),
+      y: Math.round(field.y + field.height / 2),
+    },
+  );
+  await expect(shell.getByRole("menu")).toHaveCount(0);
 });

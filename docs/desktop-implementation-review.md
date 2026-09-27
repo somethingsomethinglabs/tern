@@ -37,7 +37,7 @@ The follow-up removes the task title/status strip below the address bar, collaps
 
 The shell follows Omarchy's active palette, including changes during a session; the address toolbar remains dark. Alt reveals task letters and page numbers. Task letters follow creation order across lifecycle groups; selecting a hidden task opens its group. Standard Ctrl shortcuts remain available.
 
-The user chose to keep the Electron host for this iteration. Settings are labeled Trailrest settings. The top-right extensions manager loads explicitly selected unpacked folders into the website session, restores registrations on launch, reports invalid manifests, and removes registrations. The shell's separate session never loads them. Permission and download handlers are installed before remembered extensions start. Native Chromium settings, Web Store installation and extension toolbar popups remain unavailable.
+The user chose to keep the Electron host for this iteration. Settings are labeled Tern settings. The top-right extensions manager loads explicitly selected unpacked folders into the website session, restores registrations on launch, reports invalid manifests, and removes registrations. The shell's separate session never loads them. Permission and download handlers are installed before remembered extensions start. Native Chromium settings, Web Store installation and extension toolbar popups remain unavailable.
 
 TypeScript and the production build passed. All 16 UI scenarios passed against the final code across the suite and a targeted rerun. The shared desktop produced intermittent viewport/window failures; the last suite run passed 15 scenarios, and the remaining download scenario passed alone. New checks cover dragging through all three groups with retained form edits and restart persistence, native Alt hints and switching, automatic theme updates and invalid-palette fallback, and extension loading, invalid manifests, restart restoration and removal.
 
@@ -45,5 +45,5 @@ The packaged app was staged and its archive atomically copied into the local rel
 
 - [Task context](../design/qa/desktop-native-context.png)
 - [Alt shortcut hints](../design/qa/desktop-native-shortcuts.png)
-- [Trailrest settings](../design/qa/desktop-settings.png)
+- [Tern settings](../design/qa/desktop-settings.png)
 - [Extensions manager](../design/qa/desktop-extensions.png)

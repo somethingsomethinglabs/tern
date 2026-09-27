@@ -10,7 +10,6 @@ import {
   CaretDown,
   CaretRight,
   Circle,
-  Cube,
   FileText,
   Info,
   Link,
@@ -121,7 +120,7 @@ export function App() {
     if (selected === "claim" && !report.canSettle) {
       setSettleError(
         report.knowledge === "unknown"
-          ? "Check the website before settling. Trailrest cannot verify whether this page is saved."
+          ? "Check the website before settling. Tern cannot verify whether this page is saved."
           : "Finish and save on the website before settling this task. Expense form needs attention.",
       );
       return;
@@ -150,8 +149,7 @@ export function App() {
       </div>
       <aside className="sidebar" aria-label="Tasks">
         <div className="brand">
-          <Cube size={25} weight="light" />
-          <span>Trailrest</span>
+          <img className="brand-logo" src="/brand/tern-wordmark-inverse.svg" alt="Tern" width="104" height="39" />
           <span className="prototype-tag">PROTOTYPE</span>
         </div>
         <div className="search-row">

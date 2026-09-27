@@ -13,13 +13,13 @@ const server = createServer((_request, response) => {
   );
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-const profile = await mkdtemp(join(tmpdir(), "trailrest-visual-"));
-const env = { ...process.env, TRAILREST_PROFILE: profile };
+const profile = await mkdtemp(join(tmpdir(), "tern-visual-"));
+const env = { ...process.env, TERN_PROFILE: profile };
 delete env.ELECTRON_RUN_AS_NODE;
 const app = await electron.launch({
   executablePath:
-    process.env.TRAILREST_EXECUTABLE ||
-    join(process.cwd(), "release/Trailrest-linux-x64/Trailrest"),
+    process.env.TERN_EXECUTABLE ||
+    join(process.cwd(), "release/Tern-linux-x64/Tern"),
   env,
   chromiumSandbox: true,
 });
@@ -28,11 +28,10 @@ try {
   await app.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0].setFullScreen(true),
   );
-  await shell.getByRole("button", { name: "New task", exact: true }).click();
   await shell
-    .getByLabel("Task name", { exact: true })
+    .getByRole("textbox", { name: "New task", exact: true })
     .fill("Finish the travel claim");
-  await shell.getByRole("button", { name: "Create task", exact: true }).click();
+  await shell.getByRole("textbox", { name: "New task", exact: true }).press("Enter");
   await shell
     .getByRole("textbox", { name: "Address or search" })
     .fill(`http://127.0.0.1:${server.address().port}/`);

@@ -1,4 +1,4 @@
-# Trailrest: settle and resume
+# Tern: settle and resume
 
 Status: draft for review, with the testing approach approved by the user on 21 September 2026. The design brief and selected mock-up establish the product direction. Details marked as proposed are implementation choices for the first experiment, not previously approved product decisions. Issue publication is pending tracker setup.
 
@@ -8,7 +8,7 @@ People leave pages open because those pages represent unfinished work. A travel 
 
 Switching activities makes people choose between keeping everything visible and risking the loss of context. Unsaved forms make that choice harder. A browser can preserve a reference without preserving the application state behind it.
 
-Trailrest should let someone put work aside and return knowing which task they were doing, which page needs attention, and what to do next. It must describe what it retained accurately.
+Tern should let someone put work aside and return knowing which task they were doing, which page needs attention, and what to do next. It must describe what it retained accurately.
 
 ## Solution
 
@@ -75,7 +75,7 @@ All stories below belong to the proposed first prototype. AI stories use clearly
 
 - The repository contains a brief, research notes, and one selected mock-up. It has no application code, test suite, domain glossary, or architecture decision records. Use the brief's vocabulary below.
 - The first implementation uses controlled sample sites. Browser-engine selection, application framework, real AI integration, restart persistence, and production permissions remain undecided.
-- Preserve ordinary website content and interactions inside the task-oriented browser shell. Do not restyle each website as Trailrest cards.
+- Preserve ordinary website content and interactions inside the task-oriented browser shell. Do not restyle each website as Tern cards.
 - Keep task lifecycle, website state, and assistant state independent. Assistant completion cannot save a form, submit it, pause a task, or settle a task.
 - Retain the graphite chrome and sidebar, light task drawer, amber attention indicators, teal primary actions, compact rows, and clear dividers shown in the mock-up.
 
@@ -218,6 +218,6 @@ Before expanding into a daily browser, resolve these questions through separate 
 | Real assistant behavior | Evidence-grounded output with review, cancellation, and explicit authorization for external actions. |
 | Product value | Observed improvement in resuming realistic work compared with an existing browsing workflow. The current research motivates an experiment and does not establish demand. |
 
-Trailrest remains a working name. This spec does not choose a permanent brand.
+The project was renamed from Trailrest to Tern following the naming workshop on 23 September 2026.
 
 Publishing is pending. No project issue tracker, repository remote, or project-specific triage configuration is present. Run `/setup-matt-pocock-skills` to configure the destination; the requested publication label is `ready-for-agent`. Do not infer a destination from another project.

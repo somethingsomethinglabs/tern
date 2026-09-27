@@ -1,0 +1,28 @@
+{
+  "name": "@tern/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pretypecheck": "npm run build --workspace=@tern/core && npm run typecheck --workspace=@tern/app",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && vite build",
+    "sync": "npm run build && cap sync android",
+    "apk": "npm run sync && node scripts/build-apk.mjs",
+    "test:android": "node scripts/test-android.mjs",
+    "brand:generate": "node scripts/generate-icons.mjs"
+  },
+  "dependencies": {
+    "@tern/app": "0.1.0",
+    "@tern/core": "0.1.0",
+    "@capacitor/core": "8.5.2",
+    "@capacitor/android": "8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.2",
+    "typescript": "7.0.2",
+    "vite": "6.4.3",
+    "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "5.1.1"
+  }
+}

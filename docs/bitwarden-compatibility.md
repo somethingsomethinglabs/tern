@@ -1,22 +1,22 @@
 # Bitwarden integration
 
-Trailrest now connects installed extensions to browser tabs, popup windows, navigation events, context menus and manifest keyboard commands. The first target is the user's imported Bitwarden 2026.8.0 package. Its files and existing profile registration are unchanged.
+Tern now connects installed extensions to browser tabs, popup windows, navigation events, context menus and manifest keyboard commands. The first target is the user's imported Bitwarden 2026.8.0 package. Its files and existing profile registration are unchanged.
 
 ## Use it
 
-Quit and reopen Trailrest after updating. The toolbar shows a **B** button for Bitwarden; the Extensions panel also has **Open Bitwarden Password Manager**. On Linux, **Ctrl+Shift+U** opens it and **Ctrl+Shift+L** invokes Bitwarden's autofill command for the selected live page. Escape closes the extension window. Browser Ctrl shortcuts and Alt task/page shortcuts keep their existing meanings.
+Quit and reopen Tern after updating. The toolbar shows a **B** button for Bitwarden; the Extensions panel also has **Open Bitwarden Password Manager**. On Linux, **Ctrl+Shift+U** opens it and **Ctrl+Shift+L** invokes Bitwarden's autofill command for the selected live page. Escape closes the extension window. Browser Ctrl shortcuts and Alt task/page shortcuts keep their existing meanings.
 
-Allow a few seconds for the first-run welcome screen to initialize, then choose Log in. Sign in inside Bitwarden. Its vault and account handling remain in the extension, outside the Trailrest shell.
+Allow a few seconds for the first-run welcome screen to initialize, then choose Log in. Sign in inside Bitwarden. Its vault and account handling remain in the extension, outside the Tern shell.
 
 ## Diagnosis and changes
 
-Plain Electron loaded the manifest and content scripts, but Bitwarden's background worker stopped on missing `webNavigation.onCommitted`, and its popup stopped on missing `tabs.getCurrent`. The host now initializes the pinned `electron-chrome-extensions` 4.9.0 adapter before loading extensions. Each retained website view is registered as a tab; switching tasks updates the extension's active-tab selection. The privileged Trailrest shell is never registered as a website tab.
+Plain Electron loaded the manifest and content scripts, but Bitwarden's background worker stopped on missing `webNavigation.onCommitted`, and its popup stopped on missing `tabs.getCurrent`. The host now initializes the pinned `electron-chrome-extensions` 4.9.0 adapter before loading extensions. Each retained website view is registered as a tab; switching tasks updates the extension's active-tab selection. The privileged Tern shell is never registered as a website tab.
 
-Installed extensions with a default popup get an Open control. The host opens their own extension URL in a sandboxed window using the website session, with no Trailrest command bridge. HTTP(S) links opened by the extension become task pages. Extension-initiated page closure retains the user's confirmation and website unload handling. Optional native-messaging/privacy permissions are denied rather than granted automatically. Clipboard access is limited to an installed extension's own window and its declared clipboard permissions; website permission requests remain blocked.
+Installed extensions with a default popup get an Open control. The host opens their own extension URL in a sandboxed window using the website session, with no Tern command bridge. HTTP(S) links opened by the extension become task pages. Extension-initiated page closure retains the user's confirmation and website unload handling. Optional native-messaging/privacy permissions are denied rather than granted automatically. Clipboard access is limited to an installed extension's own window and its declared clipboard permissions; website permission requests remain blocked.
 
-Electron also misclassified these windows in `runtime.getContexts`. A small extension-only preload reports the caller's own popup and background contexts. The host derives the extension identity from the sender's frame or worker and checks its session and registration. This is a limited implementation for Trailrest's top-level extension windows, not a claim of full Chrome API compatibility.
+Electron also misclassified these windows in `runtime.getContexts`. A small extension-only preload reports the caller's own popup and background contexts. The host derives the extension identity from the sender's frame or worker and checks its session and registration. This is a limited implementation for Tern's top-level extension windows, not a claim of full Chrome API compatibility.
 
-The adapter supplies command listeners but does not dispatch keyboard commands itself. Trailrest matches manifest shortcuts and sends the event through the pinned adapter's channel, waking Manifest V3 workers first. The controlled UI test covers this dependency.
+The adapter supplies command listeners but does not dispatch keyboard commands itself. Tern matches manifest shortcuts and sends the event through the pinned adapter's channel, waking Manifest V3 workers first. The controlled UI test covers this dependency.
 
 The build copies the adapter preload with its three development API argument/result logs removed. The host registers that copy before loading extensions. A build assertion requires review if the pinned dependency's logging changes.
 
@@ -30,7 +30,7 @@ Run it from `desktop/`:
 node scripts/check-bitwarden.mjs /path/to/unpacked/bitwarden
 ```
 
-Set `TRAILREST_EXECUTABLE` to check a packaged executable. The script writes `design/qa/desktop-bitwarden-login.png`. The automated browser suite separately tests a controlled Manifest V3 extension through popup-to-worker-to-content-script messaging. It verifies active-task targeting, preservation of the other page's form, popup contexts, native autofill/open shortcuts, and website isolation.
+Set `TERN_EXECUTABLE` to check a packaged executable. The script writes `design/qa/desktop-bitwarden-login.png`. The automated browser suite separately tests a controlled Manifest V3 extension through popup-to-worker-to-content-script messaging. It verifies active-task targeting, preservation of the other page's form, popup contexts, native autofill/open shortcuts, and website isolation.
 
 Validation: type checks and production build pass; all 22 browser UI tests pass. The two extension tests also pass after the final preload logging change.
 

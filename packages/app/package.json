@@ -1,0 +1,23 @@
+{
+  "name": "@tern/app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings"
+  },
+  "dependencies": {
+    "@fontsource/inter": "5.3.0",
+    "animejs": "4.5.0",
+    "@tern/core": "0.1.0",
+    "svelte": "5.57.1",
+    "phosphor-svelte": "3.1.0"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "svelte-check": "4.7.6"
+  }
+}

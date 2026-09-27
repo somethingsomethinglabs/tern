@@ -17,13 +17,14 @@ type Pages = {
   error(message: string): void;
 };
 
-/** Connect extension tabs and windows to Trailrest without exposing the shell. */
+/** Connect extension tabs and windows to Tern without exposing the shell. */
 export class ExtensionBrowser {
   private api: ElectronChromeExtensions;
   private popups = new Map<string, BrowserWindow>();
   private windows = new Set<BrowserWindow>();
   private selected?: WebContents;
   private observed = new WeakSet<WebContents>();
+  private registeringPage = false;
 
   constructor(
     private session: Session,
@@ -41,7 +42,9 @@ export class ExtensionBrowser {
         }
         return [pages.create(url, details.active !== false), window];
       },
-      selectTab: (contents) => pages.select(contents),
+      selectTab: (contents) => {
+        if (!this.registeringPage) pages.select(contents);
+      },
       removeTab: (contents) => pages.close(contents),
       createWindow: async (details) => {
         const url = Array.isArray(details.url) ? details.url[0] : details.url;
@@ -120,14 +123,25 @@ export class ExtensionBrowser {
     }
   }
 
-  addPage(contents: WebContents) {
-    this.api.addTab(contents, this.window);
+  addPage(contents: WebContents, browserItems: (params: Electron.ContextMenuParams) => Electron.MenuItemConstructorOptions[] = () => []) {
+    // The adapter activates every newly observed tab. Registration must not
+    // change the user's task/page selection, especially for background links.
+    this.registeringPage = true;
+    try {
+      this.api.addTab(contents, this.window);
+      if (this.selected && !this.selected.isDestroyed())
+        this.api.selectTab(this.selected);
+    } finally {
+      this.registeringPage = false;
+    }
     if (this.observed.has(contents)) return;
     this.observed.add(contents);
     contents.on("context-menu", (_event, params) => {
       const items = this.api.getContextMenuItems(contents, params);
-      if (items.length) {
-        const menu = new Menu();
+      const ownItems = browserItems(params);
+      if (items.length || ownItems.length) {
+        if (items.length && ownItems.length) ownItems.push({ type: "separator" });
+        const menu = Menu.buildFromTemplate(ownItems);
         for (const item of items) menu.append(item);
         menu.popup({ window: this.window });
       }

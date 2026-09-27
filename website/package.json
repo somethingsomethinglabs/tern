@@ -1,0 +1,19 @@
+{
+  "name": "@tern/website",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tern product landing page",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build && node scripts/prepare-hosting.mjs",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "@openai/sites-vite-plugin": "0.2.0",
+    "vite": "8.3.1"
+  },
+  "dependencies": {
+    "animejs": "4.5.0"
+  }
+}

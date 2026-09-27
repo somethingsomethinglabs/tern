@@ -1,0 +1,73 @@
+{
+  "measuredAt": [
+    "2026-09-26T01:24:43.007Z",
+    "2026-09-26T01:25:41.586Z"
+  ],
+  "engine": {
+    "electron": "44.4.3",
+    "chromium": "152.0.7977.130"
+  },
+  "results": [
+    {
+      "site": "https://www.4wdsupacentre.com.au/",
+      "outcome": "native-prefetch-used",
+      "statuses": [
+        "PrefetchNotFinishedInTime",
+        "PrefetchSuccessfulButNotUsed",
+        "PrefetchResponseUsed",
+        "PrefetchEvictedAfterCandidateRemoved"
+      ],
+      "target": "https://www.4wdsupacentre.com.au/camping/tents.html",
+      "linkText": "Family Tents",
+      "marked": true,
+      "beforeClick": [
+        "PrefetchNotFinishedInTime",
+        "PrefetchSuccessfulButNotUsed"
+      ],
+      "rulePresent": true,
+      "clickToDocumentMs": 427,
+      "sameDocument": false,
+      "title": "Adventure Kings"
+    },
+    {
+      "site": "https://www.supercheapauto.com.au/",
+      "outcome": "native-prefetch-used",
+      "statuses": [
+        "PrefetchNotFinishedInTime",
+        "PrefetchSuccessfulButNotUsed",
+        "PrefetchResponseUsed",
+        "PrefetchEvictedAfterCandidateRemoved"
+      ],
+      "target": "https://www.supercheapauto.com.au/p/toolpro-air-toolpro-air-6l-silenced-oil-free-air-inflator/723466.html",
+      "linkText": "ToolPRO Air\n              \n              6L 1.25HP Silenced Oil-Free Air Inflato",
+      "marked": true,
+      "beforeClick": [
+        "PrefetchNotFinishedInTime",
+        "PrefetchSuccessfulButNotUsed"
+      ],
+      "rulePresent": true,
+      "clickToDocumentMs": 2266,
+      "sameDocument": false,
+      "title": "ToolPRO-Air 6L Silenced Oil-Free Air Inflator | Supercheap Auto"
+    },
+    {
+      "site": "https://makerworld.com/",
+      "outcome": "challenge",
+      "statuses": [
+        "PrefetchNotFinishedInTime",
+        "PrefetchFailedNon2XX"
+      ],
+      "target": "https://makerworld.com/en/3d-models",
+      "linkText": "All Models",
+      "marked": true,
+      "beforeClick": [
+        "PrefetchNotFinishedInTime",
+        "PrefetchFailedNon2XX"
+      ],
+      "rulePresent": true,
+      "clickToDocumentMs": 163,
+      "sameDocument": false,
+      "title": "Just a moment..."
+    }
+  ]
+}

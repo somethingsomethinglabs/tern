@@ -1,0 +1,47 @@
+{
+  "name": "tern-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.18.0",
+    "npm": ">=11"
+  },
+  "workspaces": [
+    "packages/core",
+    "packages/app",
+    "desktop",
+    "mobile",
+    "website",
+    "prototype"
+  ],
+  "allowScripts": {
+    "electron": true,
+    "esbuild": true,
+    "node-llama-cpp": false
+  },
+  "scripts": {
+    "brand:generate": "node scripts/generate-brand.mjs",
+    "dev": "npm run dev:desktop",
+    "dev:desktop": "npm run dev --workspace=@tern/desktop --",
+    "dev:prototype": "npm run dev --workspace=@tern/prototype --",
+    "start": "npm start --workspace=@tern/desktop --",
+    "build": "npm run build --workspaces --if-present",
+    "build:desktop": "npm run build --workspace=@tern/desktop",
+    "build:prototype": "npm run build --workspace=@tern/prototype",
+    "typecheck": "npm run check:shared && npm run build --workspace=@tern/core && npm run typecheck --workspaces --if-present",
+    "test": "npm run test:unit && npm run test --workspaces --if-present",
+    "test:unit": "npm run test:unit --workspace=@tern/desktop",
+    "test:desktop": "npm test --workspace=@tern/desktop",
+    "test:prototype": "npm test --workspace=@tern/prototype",
+    "test:sites": "npm run test:sites --workspace=@tern/prototype",
+    "package:desktop": "npm run package --workspace=@tern/desktop",
+    "dev:website": "npm run dev --workspace=@tern/website --",
+    "build:website": "npm run build --workspace=@tern/website",
+    "check:shared": "node scripts/check-shared.mjs",
+    "test:core": "npm test --workspace=@tern/core",
+    "test:package:desktop": "npm run test:package --workspace=@tern/desktop",
+    "build:mobile": "npm run build --workspace=@tern/mobile",
+    "apk:android": "npm run apk --workspace=@tern/mobile"
+  }
+}

@@ -1,0 +1,5 @@
+ImageMagick AE comparison, React versus Svelte at fixed viewports.
+overview: 0 (0)
+notes: 0 (0)
+dialog: 0 (0)
+narrow: 2.81438 (4.35662e-06)

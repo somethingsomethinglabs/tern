@@ -1,4 +1,4 @@
-# Trailrest design QA
+# Tern design QA
 
 final result: passed
 
