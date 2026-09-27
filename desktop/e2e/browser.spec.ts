@@ -626,6 +626,10 @@ for (const action of ["button", "menu", "status", "drag"] as const) {
     } else {
       await task.dragTo(shell.getByRole("button", { name: "Settled tasks", exact: true }));
     }
+    await expect(shell.getByRole("dialog")).toContainText("Unsaved website changes cannot be restored");
+    expect(first.isClosed()).toBe(false);
+    expect(second.isClosed()).toBe(false);
+    await shell.getByRole("button", { name: "Settle anyway", exact: true }).click();
     await expect.poll(() => [first.isClosed(), second.isClosed()]).toEqual([true, true]);
     await expect(other.getByLabel("Amount")).toHaveValue("Keep this draft");
     await shell.getByRole("button", { name: "Settled tasks", exact: true }).click();
@@ -634,7 +638,6 @@ for (const action of ["button", "menu", "status", "drag"] as const) {
     await expect(shell.getByRole("button", { name: "Select page Second page", exact: true })).toBeVisible();
     await expect(shell.getByRole("heading", { name: "Reopen this reference" })).toBeVisible();
     await shell.getByRole("button", { name: "Resume task", exact: true }).click();
-    await shell.getByRole("button", { name: "Reopen page", exact: true }).click();
     await expect.poll(() => app.context().pages().some(page => page.url() === origin + "/second")).toBe(true);
     const reopened = app.context().pages().find(page => page.url() === origin + "/second")!;
     await expect(reopened.getByRole("heading", { name: "Second page" })).toBeVisible();
@@ -873,6 +876,7 @@ test("dragging to Later retains edits, settling unloads pages, and moves persist
   ).toBeVisible();
   await expect(website.getByLabel("Amount")).toHaveValue("712");
   await taskButton().dragTo(settled);
+  await shell.getByRole("button", { name: "Settle anyway", exact: true }).click();
   await settled.click();
   await expect.poll(() => website.isClosed()).toBe(true);
   await taskButton().dragTo(
@@ -1626,6 +1630,7 @@ for (const source of ["shell", "website"] as const) {
 test("selected references reopen together after settlement", async () => {
   const { tab, selected } = await multiTabs();
   await shell.getByRole("button", { name: "Settle", exact: true }).click();
+  await shell.getByRole("button", { name: "Settle anyway", exact: true }).click();
   await shell.getByRole("button", { name: "Settled tasks", exact: true }).click();
   await tab(1).click();
   await tab(3).click({ modifiers: ["Control"] });
@@ -1866,4 +1871,26 @@ test("middle-clicking a website link opens a background tab in its task", async 
     },
   );
   await expect(shell.getByRole("menu")).toHaveCount(0);
+});
+
+
+test("canceling settlement and putting aside instead preserve the live form", async () => {
+  await newTask("Unfinished claim");
+  const website = await navigate(origin + "/");
+  await website.getByLabel("Amount").fill("318.20");
+  await shell.getByLabel("Task status", { exact: true }).selectOption("Settled");
+  await expect(shell.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+  await shell.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(shell.getByLabel("Task status", { exact: true })).toHaveValue("Active");
+  await expect(website.getByLabel("Amount")).toHaveValue("318.20");
+  await shell.getByRole("button", { name: "Settle", exact: true }).click();
+  await shell.screenshot({ path: "../design/qa/ux-improvements-settle-warning.png" });
+  await shell.getByRole("button", { name: "Put aside instead", exact: true }).click();
+  await shell.getByLabel("Where I left off").fill("Check the receipt");
+  await shell.getByRole("button", { name: "Put aside task", exact: true }).click();
+  await shell.getByRole("button", { name: "Later tasks", exact: true }).click();
+  await shell.getByRole("button", { name: "Resume task", exact: true }).click();
+  await expect(website.getByLabel("Amount")).toHaveValue("318.20");
+  await expect(shell.getByLabel("Task status", { exact: true })).toHaveValue("Active");
+  await expect(shell.getByLabel("Next step", { exact: true })).toHaveValue("Check the receipt");
 });

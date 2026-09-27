@@ -100,3 +100,30 @@ test('Android Back navigates history, then overview, then yields to Android', as
   await app.command({ type: 'back' });
   assert.ok(h.calls.some(call => call[0] === 'exit'));
 });
+
+test('reopening a settled task activates it and restores its selected reference', async () => {
+  const h = host(); const app = await BrowserApplication.open(h.platform);
+  await app.command({ type: 'createTask', title: 'Supplier call' });
+  await app.command({ type: 'navigate', address: 'https://example.com/form' });
+  const before = await app.snapshot();
+  await app.command({ type: 'settle' });
+  await app.command({ type: 'openTask', id: before.selectedTaskId });
+  const after = await app.snapshot();
+  assert.equal(after.tasks[0].lifecycle, 'Active');
+  assert.equal(after.pages[0].live, true);
+  assert.equal(after.tasks[0].selectedPageId, before.tasks[0].selectedPageId);
+  assert.equal(h.calls.filter(call => call[0] === 'open').length, 2);
+});
+
+test('a chosen task name keeps the original request and rejects invalid names before opening', async () => {
+  const h = host(); const app = await BrowserApplication.open(h.platform);
+  const request = 'Plan a weekend hike near Melbourne with an easy trail and public transport';
+  await app.command({ type: 'startTask', request, useAI: false, title: 'Weekend hike' });
+  const state = await app.snapshot();
+  assert.equal(state.tasks[0].title, 'Weekend hike');
+  assert.equal(state.tasks[0].request, request);
+  assert.equal(state.tasks[0].goal, request);
+  await assert.rejects(app.command({ type: 'startTask', request, useAI: false, title: 'x'.repeat(61) }));
+  assert.equal((await app.snapshot()).tasks.length, 1);
+  assert.equal(h.calls.filter(call => call[0] === 'open').length, 1);
+});

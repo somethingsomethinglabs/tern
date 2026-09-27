@@ -44,7 +44,7 @@ npm start
 
 Run those commands at the repository root. Build a standalone Linux directory with `npm run package:desktop`. Workspace scripts also work from `desktop/`, for example `npm run build` and `npm run package`. From the root, `./start-tern` opens the packaged Tern build when available, otherwise it starts the local development build. No Vite server is needed. The launcher clears `ELECTRON_RUN_AS_NODE`, which some development tools inherit.
 
-Create a task, then enter an HTTP(S) address or search query. Searches use DuckDuckGo by default; Settings also offers Google, Bing and Brave Search. Pages keep their in-memory state across task and page switches, including when a task is put aside. Settling unloads every tab in that task and cancels pending tab loads. Titles and addresses remain as references to reopen; unsaved website state is lost. Closing or reloading a page asks first. Quitting warns that live website state will end.
+Create a task, then enter an HTTP(S) address or search query. Searches use DuckDuckGo by default; Settings also offers Google, Bing and Brave Search. Pages keep their in-memory state across task and page switches, including when a task is put aside. When a task has live pages, Settle first asks you to confirm that unsaved website changes will be lost. You can cancel or choose Put aside instead. This warning also applies to the task menu, status selector and dragging into Settled. Confirming unloads every tab in that task and cancels pending tab loads. Titles and addresses remain as references to reopen; unsaved website state is lost. Closing or reloading a page asks first. Quitting warns that live website state will end.
 
 Task names, lifecycle, notes and page addresses are saved in `workspace.json` in the browsing profile, normally `~/.config/Tern` on Linux. If that directory does not exist and the previous `~/.config/Trailrest` profile does, Tern reuses it in place. No live profile is copied or moved. The internal website partition remains `persist:trailrest-web` to retain cookies and extension storage. Set `TERN_PROFILE` to an absolute directory for an isolated profile; the old `TRAILREST_PROFILE` variable remains a fallback. Only one application instance opens a given profile.
 
@@ -78,6 +78,8 @@ Later and Settled start collapsed. Click either heading to show its tasks. Drag 
 
 Ctrl-click tabs to add or remove them from a selection. Shift-click selects a range from the last clicked tab; Ctrl+Shift-click adds that range to the current selection. A plain click selects one tab, and switching tasks clears the group. The visible tab has an accent marker when several tabs are selected. Right-click a selected tab to duplicate, reload or reopen, copy addresses, or close the group. Ctrl+W and the toolbar close button also close the selected group, with one browser confirmation for live tabs and any website unload decisions. Right-clicking an unselected tab or middle-clicking a tab still targets that individual tab.
 
+The Resume task button and Return to active menu action activate the task and reopen its saved pages, starting with the selected page. Existing live pages are reused.
+
 Right-click a task for New tab, Rename, Put aside, Settle, or Return to active. Right-click a tab for New tab, Duplicate, Reload/Reopen, Copy address, or Close. These actions target the clicked item without first selecting it. Duplicate opens a fresh copy of the address; it does not copy unsaved form state. Close and reload retain their confirmations.
 
 Middle-click a tab to close it, or a website link to open a background tab in the same task. Middle-clicking a task does nothing. Hovering a task or tab explains its mouse controls. With a row focused, Shift+F10 opens its menu; arrow keys move through actions, Enter activates one, and Escape closes the menu and returns focus. Menus also dismiss on outside clicks or scrolling.
@@ -108,7 +110,11 @@ Registrations are remembered in `extensions.json`. Extensions run only in the we
 
 For Bitwarden, use the **B** toolbar button or **Ctrl+Shift+U**, then sign in inside the extension. **Ctrl+Shift+L** requests autofill on the selected page. See [Bitwarden compatibility and verification limits](../docs/bitwarden-compatibility.md).
 
+Start from a goal offers an editable short task name while retaining the full request in Task notes. With AI off, the name starts with up to six words of the request, capped at 40 characters. Set up local AI jumps directly to its setting and Back to task setup restores the draft. At widths of 800 CSS pixels or less, the created task opens with notes closed so the website stays visible.
+
 ## Keyboard
+
+The sidebar shows a persistent "Hold Alt to show shortcuts" hint. Click it to open the keyboard map in Settings.
 
 | Shortcut             | Action                                |
 | -------------------- | ------------------------------------- |

@@ -285,3 +285,46 @@ for (const action of ["stop", "click"] as const) {
     await expect(page).toHaveURL(searchURL);
   });
 }
+
+
+test("task setup keeps its draft through AI settings and shows the first result at narrow widths", async () => {
+  await app.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    window.setFullScreen(false);
+    window.setSize(760, 850);
+  });
+  await expect.poll(() => shell.evaluate(() => window.innerWidth)).toBeLessThanOrEqual(800);
+  await fillRequest();
+  await shell.getByLabel("Task name", { exact: true }).fill("Linux laptop shortlist");
+  await shell.getByRole("button", { name: "Set up local AI", exact: true }).click();
+  await expect(shell.getByLabel("Local AI", { exact: true })).toBeFocused();
+  await shell.getByRole("button", { name: "Back to task setup", exact: true }).last().click();
+  await expect(shell.getByLabel("Your request")).toHaveValue(request);
+  await expect(shell.getByLabel("Task name", { exact: true })).toHaveValue("Linux laptop shortlist");
+  await expect(shell.getByRole("dialog")).toHaveCSS("opacity", "1");
+  await shell.screenshot({ path: "../design/qa/ux-improvements-task-setup.png" });
+  await shell.getByRole("button", { name: "Start task", exact: true }).click();
+  await expect(shell.getByRole("dialog")).not.toBeVisible();
+  await expect(shell.getByRole("heading", { name: "Task notes", exact: true })).not.toBeVisible();
+  await expect.poll(async () => {
+    const state = await shell.evaluate(() => window.tern.snapshot());
+    return state.tasks.find(task => task.id === state.selectedTaskId)?.title;
+  }).toBe("Linux laptop shortlist");
+  await expect.poll(() => app.context().pages().some(page => page.url().startsWith(origin + "/result"))).toBe(true);
+  const bounds = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].contentView.children.map(view => view.getBounds()));
+  expect(bounds.some(bounds => bounds.width > 200 && bounds.height > 200)).toBe(true);
+  await shell.screenshot({ path: "../design/qa/ux-improvements-first-result.png" });
+  const result = app.context().pages().find(page => page.url().startsWith(origin + "/result"))!;
+  await expect(result.getByRole("heading", { name: "Search results", exact: true })).toBeVisible();
+  await result.screenshot({ path: "../design/qa/ux-improvements-first-result-website.png" });
+  await shell.getByRole("button", { name: "Toggle task notes", exact: true }).click();
+  await expect(shell.getByLabel("Goal", { exact: true })).toHaveValue(request);
+  await shell.getByText("Original request", { exact: true }).click();
+  await expect(shell.locator(".original-request")).toContainText(request);
+});
+
+test("the persistent shortcut hint opens the keyboard map", async () => {
+  await shell.getByRole("button", { name: "Hold Alt to show shortcuts", exact: true }).click();
+  await expect(shell.getByRole("heading", { name: "Keyboard shortcuts", exact: true })).toBeFocused();
+  await expect(shell.getByText("Switch tasks in creation order", { exact: true })).toBeVisible();
+});

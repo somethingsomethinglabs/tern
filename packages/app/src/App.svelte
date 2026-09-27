@@ -35,6 +35,7 @@
   import SnapshotButton from "./SnapshotButton.svelte";
   import NewTask from "./NewTask.svelte";
   import StartTaskForm from "./StartTaskForm.svelte";
+  import { basicTaskPlan } from "@tern/core/task-plan";
   import { entrance } from "./motion.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import type { MenuState, MenuAction } from "./ContextMenu.svelte";
@@ -53,12 +54,15 @@
   let query = $state.raw("");
 
   let modal = $state.raw<
-    "pause" | "rename" | "downloads" | "extensions" | "startTask" | null
+    "pause" | "rename" | "downloads" | "extensions" | "startTask" | "settle" | null
   >(null);
 
   let name = $state.raw("");
 
   let taskRequest = $state.raw("");
+  let taskTitle = $state.raw<string | null>(null);
+  let settlement = $state.raw<Command | null>(null);
+  let settling = $state.raw(false);
 
   let startingTask = $state.raw(false);
 
@@ -77,6 +81,22 @@
   let drawer = $state.raw(false);
 
   let settingsOpen = $state.raw(false);
+  let settingsSection = $state.raw<"localAI" | "shortcuts" | null>(null);
+  let returnToTaskStart = $state.raw(false);
+  const openSettings = (section: typeof settingsSection = null, returnToStart = false) => {
+    settingsSection = section;
+    returnToTaskStart = returnToStart;
+    modal = null;
+    settingsOpen = true;
+    mobileTasksOpen = false;
+    toolbarHidden = false;
+  };
+  const closeSettings = () => {
+    settingsOpen = false;
+    settingsSection = null;
+    if (returnToTaskStart) modal = "startTask";
+    returnToTaskStart = false;
+  };
 
   let toolbarHidden = $state.raw(false);
 
@@ -145,7 +165,25 @@
       addressInput?.select();
     });
   };
-  const send = async (command: Command) => {
+  const send = async (command: Command, confirmedSettlement = false) => {
+    if (!confirmedSettlement && (command.type === "settle" ||
+      (command.type === "moveTask" && command.lifecycle === "Settled"))) {
+      const id = command.id ?? task?.id;
+      const target = snapshot?.tasks.find((item) => item.id === id);
+      if (target && snapshot?.pages.some((page) => page.taskId === id && page.live)) {
+        settlement = { ...command, id: target.id };
+        modalTaskId = id;
+        name = target.title;
+        note = target.note;
+        modal = "settle";
+        return false;
+      }
+    }
+    if (command.type === "resume") {
+      const id = command.id ?? task?.id;
+      if (!id) return false;
+      command = { type: "openTask", id };
+    }
     const attempt = ++commandAttempt;
     try {
       error = "";
@@ -164,6 +202,8 @@
         ].includes(command.type)
       ) {
         settingsOpen = false;
+        returnToTaskStart = false;
+        settingsSection = null;
         mobileTasksOpen = false;
       }
       if (
@@ -202,14 +242,16 @@
       type: "startTask",
       request: taskRequest,
       useAI,
+      title: taskTitle?.trim() || (useAI ? undefined : basicTaskPlan(taskRequest).title),
     });
     if (attempt !== startAttempt) return;
     startingTask = false;
     if (success) {
       taskRequest = "";
+      taskTitle = null;
       query = "";
       modal = null;
-      drawer = true;
+      drawer = !mobile && window.innerWidth > 800;
     }
   };
   const taskDialog = (target: Task, kind: "rename" | "pause") => {
@@ -482,7 +524,7 @@
           else modal = null;
         } else if (menu) closeMenu();
         else if (mobileTasksOpen) mobileTasksOpen = false;
-        else if (settingsOpen) settingsOpen = false;
+        else if (settingsOpen) closeSettings();
         else if (drawer) drawer = false;
         else if (finding) finding = false;
         else void send({ type: "back" });
@@ -610,6 +652,7 @@
       <input
         bind:this={searchInput}
         aria-label="Search tasks and pages"
+        aria-describedby={mobile ? undefined : "task-shortcut-hint"}
         placeholder="Find a task or page"
         value={query}
         oninput={(event) => (query = event.currentTarget.value)}
@@ -623,6 +666,12 @@
           }}><X aria-hidden="true" size={16}></X></button
         >{/if}
     </div>
+    {#if !mobile}<button
+        id="task-shortcut-hint"
+        class="shortcut-discovery"
+        title="Keyboard shortcuts: Alt and a letter switches tasks; Alt and a number switches tabs"
+        onclick={() => openSettings("shortcuts")}
+      >Hold <kbd>Alt</kbd> to show shortcuts</button>{/if}
     <button
       class="start-task-button"
       onclick={() => {
@@ -904,11 +953,7 @@
       <button
         class="settings-button"
         title="Settings"
-        onclick={() => {
-          settingsOpen = true;
-          mobileTasksOpen = false;
-          toolbarHidden = false;
-        }}
+        onclick={() => openSettings()}
       >
         <GearSix aria-hidden="true" size={19}></GearSix>
         <span>Settings</span>
@@ -1106,7 +1151,9 @@
     {#if settingsOpen && snapshot}<SettingsPage
         {snapshot}
         {send}
-        close={() => (settingsOpen = false)}
+        initialSection={settingsSection}
+        closeLabel={returnToTaskStart ? "Back to task setup" : "Back to browsing"}
+        close={closeSettings}
       ></SettingsPage>{/if}
     {#if overviewOpen && !settingsOpen && snapshot}<TaskOverview
         {snapshot}
@@ -1192,6 +1239,8 @@
     {#if error && modal}<p role="alert">{error}</p>{/if}
     {#if modal === "startTask"}<StartTaskForm
         request={taskRequest}
+        title={taskTitle ?? (!snapshot?.preferences.summaryModel ? basicTaskPlan(taskRequest).title : "")}
+        setTitle={(value) => (taskTitle = value)}
         setRequest={(value) => {
           taskRequest = value;
         }}
@@ -1208,7 +1257,25 @@
         }[snapshot?.preferences.searchEngine ?? "duckduckgo"]}
         start={(useAI) => void startFromRequest(useAI)}
         cancel={cancelTaskStart}
-      ></StartTaskForm>{:else}{#if modal === "extensions"}<ExtensionsPanel
+        configureAI={() => openSettings("localAI", true)}
+      ></StartTaskForm>{:else if modal === "settle"}<section>
+        <h2 id="dialog-title">Settle this task?</h2>
+        <p>Settling "{name}" closes its live pages. Unsaved website changes cannot be restored. Saved notes and page addresses stay with the task.</p>
+        <p>Put it aside instead to keep its pages live while Tern is open.</p>
+        <footer>
+          <!-- svelte-ignore a11y_autofocus (Cancel is the safe default for this destructive action.) -->
+          <button autofocus disabled={settling} onclick={() => (modal = null)}>Cancel</button>
+          <button disabled={settling} onclick={() => (modal = "pause")}>Put aside instead</button>
+          <button class="primary" disabled={settling} onclick={async () => {
+            if (!settlement || settling) return;
+            const submittedDialog = dialogGeneration;
+            settling = true;
+            const success = await send(settlement, true);
+            settling = false;
+            if (success && dialogGeneration === submittedDialog) modal = null;
+          }}>Settle anyway</button>
+        </footer>
+      </section>{:else}{#if modal === "extensions"}<ExtensionsPanel
           extensions={snapshot?.extensions ?? []}
           notice={snapshot?.notice ?? ""}
           {send}
@@ -1247,7 +1314,7 @@
             </h2>
             <p>
               {modal === "pause"
-                ? "Your pages stay live. Leave a short note for when you return."
+                ? "Your pages stay live while Tern is open. This does not save website changes. Leave a short note for when you return."
                 : "What are you working toward?"}
             </p>
             {#if modal === "pause"}

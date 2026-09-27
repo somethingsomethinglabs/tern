@@ -560,7 +560,7 @@ async function command(raw: unknown) {
       if (!plan || quitting) return;
       if (views.size + restoration.size + plan.searches.length > 100)
         throw new Error("Close a few pages before starting this task. Your request is still here.");
-      const next = plannedWorkspace(workspace, plan, request, preferences.value.searchEngine, randomUUID);
+      const next = plannedWorkspace(workspace, plan, request, preferences.value.searchEngine, randomUUID, value.title);
       const task = next.tasks[next.tasks.length - 1];
       const pages = next.pages.filter(page => page.taskId === task.id);
       if (!storage.save(next)) { publish(); throw new Error(storage.error); }
@@ -837,6 +837,7 @@ async function command(raw: unknown) {
           task.selectedPageId,
           pages.map((page) => page.id),
         );
+        workspaceModel.command({ type: "resume", id: task.id });
       }
       workspace.selectedTaskId = task.id;
       focusResumedPage = value.type === "openTask";

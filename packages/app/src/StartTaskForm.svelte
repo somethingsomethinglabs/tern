@@ -1,6 +1,8 @@
 <script lang="ts">
   let {
     request,
+    title,
+    setTitle,
     setRequest,
     pending,
     status,
@@ -10,8 +12,11 @@
     engine,
     start,
     cancel,
+    configureAI,
   }: {
     request: string;
+    title: string;
+    setTitle(value: string): void;
     setRequest(value: string): void;
     pending: boolean;
     status: string;
@@ -21,6 +26,7 @@
     engine: string;
     start(useAI: boolean): void;
     cancel(): void;
+    configureAI(): void;
   } = $props();
 </script>
 
@@ -39,6 +45,7 @@
         ? "Tern will save your request as a task and open a search. Your goal and notes stay with the task."
         : "Local AI is off. Tern will save your request as a task and open the first web result for your request. Enable local AI in Settings for a task name and focused searches."}
   </p>
+  {#if aiAvailable && !enabled}<button type="button" disabled={pending} onclick={configureAI}>Set up local AI</button>{/if}
   <label for="task-request">Your request</label>
   <!-- svelte-ignore a11y_autofocus (This form opens inside a modal dialog.) -->
   <textarea
@@ -59,6 +66,12 @@
         : " Choose a result to begin browsing."}</small
     >
   </div>
+  <label for="task-title">Task name{enabled ? " (optional)" : ""}</label>
+  <input id="task-title" maxlength={60} value={title} disabled={pending}
+    oninput={(event) => setTitle(event.currentTarget.value)}
+    placeholder={enabled ? "Let AI name it, or enter a short name" : "For example, Weekend hike"}
+    aria-describedby="task-title-hint" />
+  <small id="task-title-hint">A short name for the sidebar. Your full request stays in Task notes.</small>
   {#if pending}<p role="status">{status || "Preparing your task..."}</p>{/if}
   <footer>
     <button type="button" onclick={cancel}

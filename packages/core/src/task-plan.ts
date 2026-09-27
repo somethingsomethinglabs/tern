@@ -1,5 +1,6 @@
 import { searchURL } from "./navigation.js";
 import type { TaskPlan } from "./contracts.js";
+import { checkedText } from "./workspace-model.js";
 
 export const TASK_START_PROMPT = `Create a browser task from the user's request. Return only JSON with title, goal and searches.
 Use a specific three-to-six word title naming the subject. Restate the goal, keeping all requirements including numbers and limits.
@@ -24,7 +25,7 @@ export function parseTaskPlan(value: unknown): TaskPlan {
 
 export function basicTaskPlan(request: string): TaskPlan {
   return {
-    title: request.replace(/\s+/g, " ").slice(0, 80),
+    title: request.trim().split(/\s+/).slice(0, 6).join(" ").slice(0, 40),
     goal: request.slice(0, 500),
     searches: [request.replace(/\s+/g, " ").slice(0, 160)],
   };
@@ -33,10 +34,10 @@ export function basicTaskPlan(request: string): TaskPlan {
 
 // Construct a complete candidate before persistence or opening any website.
 export function plannedWorkspace(workspace: import('./contracts.js').Workspace, plan: TaskPlan,
-  request: string, engine: import('./contracts.js').Preferences['searchEngine'], id: () => string) {
+  request: string, engine: import('./contracts.js').Preferences['searchEngine'], id: () => string, title?: string) {
   if (workspace.tasks.length >= 10000) throw new Error("The workspace has reached its task limit.");
   const task: import('./contracts.js').Task = {
-    id: id(), title: plan.title, goal: plan.goal, request,
+    id: id(), title: title === undefined ? plan.title : checkedText(title, 60).trim() || plan.title, goal: plan.goal, request,
     note: "", lifecycle: "Active", selectedPageId: null,
   };
   const pages = plan.searches.map(query => ({ id: id(), taskId: task.id, title: query, url: searchURL(query, engine) }));

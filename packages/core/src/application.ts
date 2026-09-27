@@ -156,6 +156,7 @@ export class BrowserApplication implements Bridge {
           // Reopen on demand on phones; background references stay available.
           const selected = pages.find(page => page.id === task.selectedPageId);
           if (selected) await this.openPage(selected);
+          this.model.command({ type: "resume", id: task.id });
         }
         break;
       }
@@ -170,7 +171,7 @@ export class BrowserApplication implements Bridge {
         if (value.useAI) throw new Error("Local AI is not available in this build.");
         const request = checkedText(value.request, 1000).trim();
         if (!request) throw new Error("Describe what you need to do.");
-        const next = plannedWorkspace(this.workspace, basicTaskPlan(request), request, this.preferences.searchEngine, this.platform.id);
+        const next = plannedWorkspace(this.workspace, basicTaskPlan(request), request, this.preferences.searchEngine, this.platform.id, value.title);
         await this.save(next);
         Object.assign(this.workspace, next);
         createdTaskId = next.selectedTaskId!;

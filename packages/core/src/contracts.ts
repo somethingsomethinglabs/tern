@@ -97,7 +97,7 @@ export type Command =
   | { type: "showOverview" }
   | { type: "openTask"; id: string }
   | { type: "createTask"; title: string }
-  | { type: "startTask"; request: string; useAI: boolean }
+  | { type: "startTask"; request: string; useAI: boolean; title?: string }
   | { type: "cancelTaskStart" }
   | { type: "selectTask"; id: string }
   | { type: "renameTask"; id: string; title: string }

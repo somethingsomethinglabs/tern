@@ -1,13 +1,26 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { tick, untrack } from "svelte";
   import type { Command, Snapshot, Preferences } from "@tern/core/contracts";
   import { BUILTIN_MODEL, builtinModel } from "@tern/core/local-ai-config";
   type Props = {
     snapshot: Snapshot;
     send(command: Command): Promise<boolean>;
     close(): void;
+    initialSection?: "localAI" | "shortcuts" | null;
+    closeLabel?: string;
   };
-  let { snapshot, send, close }: Props = $props();
+  let { snapshot, send, close, initialSection = null, closeLabel = "Back to browsing" }: Props = $props();
+  let aiSelect = $state.raw<HTMLSelectElement>();
+  let shortcutHeading = $state.raw<HTMLHeadingElement>();
+  $effect(() => {
+    const target = initialSection === "localAI" ? aiSelect : initialSection === "shortcuts" ? shortcutHeading : undefined;
+    if (!target) return;
+    void tick().then(() => {
+      if (!target.isConnected) return;
+      target.focus();
+      target.scrollIntoView({ block: "center" });
+    });
+  });
   let pending = $state.raw<Partial<Preferences>>({});
 
   let summaryModel = $state.raw(
@@ -75,7 +88,7 @@
       <h1>Settings</h1>
       <p>Make Tern work the way you browse.</p>
     </div>
-    <button onclick={close}>Back to browsing</button>
+    <button onclick={close}>{closeLabel}</button>
   </header>
   <section>
     <h2>Search</h2>
@@ -165,6 +178,7 @@
         Local AI
         <select
           aria-label="Local AI"
+          bind:this={aiSelect}
           value={summaryMode}
           onchange={(event) => {
             const mode = event.currentTarget.value;
@@ -292,7 +306,8 @@
     </p>
   </section>
   {#if !snapshot.capabilities?.mobile}<section>
-      <h2>Keyboard shortcuts</h2>
+      <h2 bind:this={shortcutHeading} tabindex="-1">Keyboard shortcuts</h2>
+      <p>Hold Alt to show task letters and tab numbers in the sidebar.</p>
       <dl class="shortcut-list">
         <dt>Alt+A–Z</dt>
         <dd>Switch tasks in creation order</dd>
@@ -308,4 +323,5 @@
         <dd>Back / forward</dd>
       </dl>
     </section>{/if}
+  {#if closeLabel !== "Back to browsing"}<footer><button onclick={close}>{closeLabel}</button></footer>{/if}
 </section>

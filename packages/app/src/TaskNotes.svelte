@@ -134,12 +134,15 @@
       <select
         aria-label="Task status"
         value={task.lifecycle}
-        onchange={(event) =>
+        onchange={(event) => {
+          const lifecycle = event.currentTarget.value as Lifecycle;
+          event.currentTarget.value = task.lifecycle;
           void send({
             type: "moveTask",
             id: task.id,
-            lifecycle: event.currentTarget.value as Lifecycle,
-          })}
+            lifecycle,
+          });
+        }}
       >
         <option>Active</option>
         <option>Later</option>
