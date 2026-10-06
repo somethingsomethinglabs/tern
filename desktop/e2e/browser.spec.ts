@@ -2003,5 +2003,5 @@ test("update restart respects cancellation and launches the installed release af
   const closed = app.waitForEvent("close");
   await shell.evaluate(() => window.tern.command({ type: "restartForUpdate" })).catch(() => {});
   await closed;
-  expect(JSON.parse(await readFile(join(profile, "relaunch.json"), "utf8"))).toEqual({ execPath: "/installed/current/Tern" });
+  expect(JSON.parse(await readFile(join(profile, "relaunch.json"), "utf8"))).toEqual({ execPath: "/installed/current/Tern", args: [] });
 });

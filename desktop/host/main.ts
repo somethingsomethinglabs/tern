@@ -1445,7 +1445,7 @@ async function start() {
       publish();
       return;
     }
-    if (restartForUpdate && updater.restartExecutable) app.relaunch({ execPath: updater.restartExecutable });
+    if (restartForUpdate && updater.restartExecutable) app.relaunch({ execPath: updater.restartExecutable, args: [] });
     quitting = true;
     restoration.stop();
     taskSummaries.stop();
