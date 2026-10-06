@@ -36,6 +36,11 @@ test('downloads, verifies and atomically switches a signed release without repla
   const {root,updater} = await fixture(t);
   await updater.check(); assert.equal(updater.state.version, '0.1.1');
   await updater.install(); assert.match(updater.state.status, /Update installed/);
+  assert.equal(updater.state.ready, true);
+  assert.equal(updater.state.progress, 100);
+  assert.equal(updater.restartExecutable, join(root,'current','Tern'));
+  await updater.check();
+  assert.equal(updater.state.ready, true, 'Background checks must retain the restart prompt');
   assert.equal(await readlink(join(root,'current')), 'releases/0.1.1-signed-1');
   assert.equal(await readlink(join(root,'previous')), 'releases/old');
   assert.equal(await readFile(join(root,'releases/old/Tern'),'utf8'), 'old');
@@ -45,6 +50,9 @@ test('a tampered download preserves the installed release and update high-water 
   const {root,updater} = await fixture(t,true);
   await updater.check(); await updater.install();
   assert.match(updater.state.status,/checksum/);
+  assert.equal(updater.state.ready, false);
+  assert.equal(updater.restartExecutable, undefined);
+  assert.equal(updater.state.version, '0.1.1', 'Failed downloads must permit a retry');
   assert.equal(await readlink(join(root,'current')), 'releases/old');
   await assert.rejects(readFile(join(root,'update-state.json')), {code:'ENOENT'});
 });

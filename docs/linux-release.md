@@ -56,6 +56,12 @@ Upload `Tern-linux-x64.tar.gz` as `tern-linux-x64.tar.gz`, and `Tern-linux-x64.m
 
 Manifests expire after fourteen days. Refresh and re-sign the current manifest before expiry, keeping its version, archive and sequence unchanged, or publish a newer version. If metadata expires, the client rejects it and explains the failure; it does not install an unverifiable update. GitHub's “latest” selection and anonymous asset access must be verified after publishing.
 
+## In-app updates
+
+Starting with 0.1.2, the main browser window prompts when a signed update is available. Choose **Update now** to download, verify and install it without leaving the application. Progress appears during download, and failures leave the current release active with a retry option. **Later** hides that version's prompt for the current session; Settings retains the update controls.
+
+After installation, choose **Restart Tern** when website work is saved. The existing quit confirmation lets you cancel. Accepted restarts launch the newly installed executable. Tasks, notes and page addresses persist; unsaved website forms do not survive a restart. Startup and four-hour checks continue automatically. Portable runs still require the installer to enable managed updates.
+
 ## User installation
 
 Extract the publisher's archive, then run `./install.sh`. It installs to `~/.local`, adds the app-menu entry and accepts `--prefix /absolute/directory` for an isolated installation. Node/npm and this repository are not required. Alternatively, run `./Tern` directly; portable runs do not enable managed updates. The desktop entry accepts HTTP/HTTPS links from other applications without replacing an existing page or its unsaved form. The OS can select Tern as the default browser; the installer does not change that preference automatically.

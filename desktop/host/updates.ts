@@ -10,7 +10,7 @@ import { verifyManifest, compareVersions, type ReleaseManifest } from "./update-
 
 type Config = { manifestURL: string; publicKey: string };
 export class ReleaseUpdater {
-  state = { configured: false, busy: false, status: "Updates are not configured for this build.", version: "" };
+  state = { configured: false, busy: false, status: "Updates are not configured for this build.", version: "", ready: false, progress: 0 };
   private config?: Config;
   private release?: ReleaseManifest;
   private sequence = 0;
@@ -41,8 +41,9 @@ export class ReleaseUpdater {
     }
     this.changed();
   }
+  get restartExecutable() { return this.state.ready ? join(this.root, "current", "Tern") : undefined; }
   async check() {
-    if (!this.config || !this.state.configured || this.state.busy) return;
+    if (!this.config || !this.state.configured || this.state.busy || this.state.ready) return;
     this.state.busy = true; this.state.status = "Checking for updates…"; this.changed();
     try {
       const response = await secureFetch(this.config.manifestURL, 15000);
@@ -63,7 +64,7 @@ export class ReleaseUpdater {
     const release = this.release;
     if (release.expires <= Date.now() || release.sequence <= this.sequence || compareVersions(release.version, this.version) <= 0)
       throw new Error("Check for a current release before installing.");
-    this.state.busy = true; this.state.status = "Downloading and verifying update…"; this.changed();
+    this.state.progress = 0; this.state.busy = true; this.state.status = "Downloading and verifying update…"; this.changed();
     let temporary = "", locked = false;
     const lock = join(this.root, ".install-lock");
     try {
@@ -78,9 +79,14 @@ export class ReleaseUpdater {
       const response = await secureFetch(release.url, 300000);
       if (!response.ok || !response.body) throw new Error("Update download failed.");
       let received = 0;
+      const reportProgress = (bytes: number) => {
+        const percent = Math.min(100, Math.floor(bytes / release.bytes * 100));
+        if (percent !== this.state.progress) { this.state.progress = percent; this.changed(); }
+      };
       await pipeline(Readable.fromWeb(response.body as import("node:stream/web").ReadableStream), new Transform({
         transform(chunk, _encoding, callback) {
           received += chunk.length;
+          reportProgress(received);
           callback(received > release.bytes ? new Error("Update exceeds its signed size.") : null, chunk);
         },
       }), createWriteStream(archive, { flags: "wx", mode: 0o600 }));
@@ -106,7 +112,7 @@ export class ReleaseUpdater {
       const previous = join(this.root, ".previous-update"); await symlink(current, previous); await rename(previous, join(this.root, "previous"));
       const next = join(this.root, ".current-update"); await symlink(`releases/${id}`, next); await rename(next, join(this.root, "current"));
       this.state.status = "Update installed. Quit and reopen Tern when your website work is saved.";
-      this.state.version = ""; this.release = undefined;
+      this.state.ready = true; this.state.version = ""; this.release = undefined;
     } catch (error) { this.state.status = `Update was not installed: ${(error as Error).message}`; }
     finally { if (temporary) await rm(temporary, { recursive: true, force: true }); if (locked) await rm(lock, { recursive: true, force: true }); this.state.busy = false; this.changed(); }
   }

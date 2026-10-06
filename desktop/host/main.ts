@@ -117,6 +117,7 @@ let extensionBrowser: ExtensionBrowser;
 let theme = readTheme();
 let notice = "";
 let quitting = false;
+let restartForUpdate = false;
 const downloads: Snapshot["downloads"] = [];
 const downloadDestinations = new Set<string>();
 let takingSnapshot = false;
@@ -597,6 +598,11 @@ async function command(raw: unknown) {
   } else switch (value.type) {
     case "checkForUpdates": await updater.check(); break;
     case "installUpdate": await updater.install(); break;
+    case "restartForUpdate":
+      if (!updater.restartExecutable) throw new Error("Install an update before restarting.");
+      restartForUpdate = true;
+      try { window.close(); } finally { restartForUpdate = false; }
+      break;
     case "setSitePermission":
     case "resetSitePermissions": {
       const origin = text(value.origin, 2048);
@@ -1439,6 +1445,7 @@ async function start() {
       publish();
       return;
     }
+    if (restartForUpdate && updater.restartExecutable) app.relaunch({ execPath: updater.restartExecutable });
     quitting = true;
     restoration.stop();
     taskSummaries.stop();

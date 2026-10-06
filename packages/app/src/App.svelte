@@ -29,6 +29,7 @@
     PageState,
   } from "@tern/core/contracts";
   import "./styles.css";
+  import UpdatePrompt from "./UpdatePrompt.svelte";
   import SiteInformation from "./SiteInformation.svelte";
   import SettingsPage from "./SettingsPage.svelte";
   import SearchResults, { type SearchViewState } from "./SearchResults.svelte";
@@ -1175,6 +1176,7 @@
           <X aria-hidden="true" size={16}></X>
         </button>
       </div>{/if}
+    {#if snapshot?.updates}<UpdatePrompt updates={snapshot.updates} {send} />{/if}
     {#if settingsOpen && snapshot}<SettingsPage
         {snapshot}
         {send}

@@ -322,6 +322,7 @@
     <h2>Updates</h2>
     <p role="status">{snapshot.updates.status}</p>
     <button disabled={!snapshot.updates.configured || snapshot.updates.busy} onclick={() => void send({ type: "checkForUpdates" })}>Check for updates</button>
+    {#if snapshot.updates.ready}<button onclick={() => void send({ type: "restartForUpdate" })}>Restart Tern</button>{/if}
     {#if snapshot.updates.version}<button disabled={snapshot.updates.busy} onclick={() => void send({ type: "installUpdate" })}>Install verified update</button>{/if}
   </section>{/if}
   <section>

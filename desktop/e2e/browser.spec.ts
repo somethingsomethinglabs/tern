@@ -1983,3 +1983,25 @@ test("canceling settlement and putting aside instead preserve the live form", as
   await expect(shell.getByLabel("Task status", { exact: true })).toHaveValue("Active");
   await expect(shell.getByLabel("Next step", { exact: true })).toHaveValue("Check the receipt");
 });
+
+test("update restart respects cancellation and launches the installed release after confirmation", async () => {
+  await newTask("Keep website work");
+  await navigate(origin + "/");
+  await app.evaluate(({ app, dialog }, { modulePath, marker }) => {
+    const { ReleaseUpdater } = process.getBuiltinModule("module").createRequire(modulePath)(modulePath);
+    ReleaseUpdater.prototype.install = async function () { this.state.ready = true; };
+    Object.defineProperty(ReleaseUpdater.prototype, "restartExecutable", { get() { return this.state.ready ? "/installed/current/Tern" : undefined; } });
+    const fs = process.getBuiltinModule("fs");
+    app.relaunch = options => { fs.writeFileSync(marker, JSON.stringify(options)); };
+    dialog.showMessageBoxSync = () => 0;
+  }, { modulePath: new URL("../dist/host/updates.js", import.meta.url).pathname, marker: join(profile, "relaunch.json") });
+  await shell.evaluate(() => window.tern.command({ type: "installUpdate" }));
+  await shell.evaluate(() => window.tern.command({ type: "restartForUpdate" }));
+  await expect(shell.getByRole("textbox", { name: "Address or search" })).toBeVisible();
+  await expect(readFile(join(profile, "relaunch.json"))).rejects.toThrow();
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; });
+  const closed = app.waitForEvent("close");
+  await shell.evaluate(() => window.tern.command({ type: "restartForUpdate" })).catch(() => {});
+  await closed;
+  expect(JSON.parse(await readFile(join(profile, "relaunch.json"), "utf8"))).toEqual({ execPath: "/installed/current/Tern" });
+});

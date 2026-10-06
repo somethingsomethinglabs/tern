@@ -77,7 +77,7 @@ export type Workspace = {
 export type Snapshot = Omit<Workspace, "pages"> & {
   siteInfo?: { origin: string; secure: boolean; files: number;
     permissions: { name: string; label: string; state: "ask" | "blocked" | "allowed" }[] };
-  updates?: { configured: boolean; busy: boolean; status: string; version: string };
+  updates?: { configured: boolean; busy: boolean; status: string; version: string; ready?: boolean; progress?: number };
   security?: { cookieStorage: "encrypted" | "session" | "development"; detail: string };
   blockedPopups?: { id: string; url: string }[];
   searches?: Record<string, SearchState>;
@@ -127,7 +127,7 @@ export type Command =
   | { type: "setSitePermission"; origin: string; permission: string; policy: "ask" | "block" }
   | { type: "resetSitePermissions"; origin: string }
   | { type: "openBlockedPopup"; id: string }
-  | { type: "checkForUpdates" | "installUpdate" }
+  | { type: "checkForUpdates" | "installUpdate" | "restartForUpdate" }
   | { type: "printPage" | "savePDF" | "savePage" }
   | { type: "downloadAction"; id: string; action: "cancel" | "resume" | "showFolder" }
   | { type: "showOverview" }

@@ -441,3 +441,26 @@ test("Android settings retain engine selection and omit desktop metasearch contr
   await mkdir(resolve("../design/qa/search"), { recursive: true });
   await shell.screenshot({ path: resolve("../design/qa/search/android-search-settings.png") });
 });
+
+test("update prompt installs in place, reports failure and offers restart without repeating dismissed versions", async () => {
+  const publish = async (patch: Record<string, unknown>) => shell.evaluate(patch => (window as any).testUI.publish({ updates: { configured: true, busy: false, status: "Available", version: "0.1.2", ...patch } }), patch);
+  await publish({});
+  const prompt = shell.getByRole("region", { name: "Application update" });
+  await expect(prompt).toBeVisible();
+  await prompt.getByRole("button", { name: "Later", exact: true }).click();
+  await publish({});
+  await expect(prompt).toHaveCount(0);
+  await publish({ version: "0.1.3" });
+  await prompt.getByRole("button", { name: "Update now", exact: true }).click();
+  expect(await shell.evaluate(() => (window as any).testUI.commands.at(-1))).toEqual({ type: "installUpdate" });
+  await publish({ version: "0.1.3", busy: true, progress: 42, status: "Downloading and verifying update…" });
+  await expect(prompt.getByRole("progressbar")).toHaveAttribute("value", "42");
+  await expect(prompt.getByRole("button")).toHaveCount(0);
+  await publish({ version: "0.1.3", status: "Update was not installed: Update checksum does not match its signed manifest." });
+  await expect(prompt).toContainText("checksum");
+  await expect(prompt.getByRole("button", { name: "Update now", exact: true })).toBeEnabled();
+  await publish({ version: "", ready: true });
+  await prompt.getByRole("button", { name: "Restart Tern", exact: true }).click();
+  expect(await shell.evaluate(() => (window as any).testUI.commands.at(-1))).toEqual({ type: "restartForUpdate" });
+  await expect(prompt).toContainText("when your website work is saved");
+});
