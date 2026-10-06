@@ -24,7 +24,8 @@ async function close() {
   if (child && child.exitCode === null && child.signalCode === null) {
     const ended = new Promise(resolve => child.once('exit', resolve));
     child.kill('SIGTERM');
-    await ended;
+    const force = setTimeout(() => child?.kill('SIGKILL'), 5000);
+    try { await ended; } finally { clearTimeout(force); }
   }
   child = undefined;
   await browser?.close().catch(() => {}); browser = undefined;
@@ -63,7 +64,7 @@ try {
   const launch = async () => {
     // Chromium CDP tests the real hardened binary without enabling Electron's
     // main-process inspector or modifying the production fuse settings.
-    child = spawn(join(distribution, 'Tern'), ['--remote-debugging-port=0', ...(requireEncryption ? ['--password-store=gnome-libsecret'] : [])], {
+    child = spawn(join(distribution, 'Tern'), ['--remote-debugging-port=0', requireEncryption ? '--password-store=gnome-libsecret' : '--password-store=basic'], {
       cwd: temporary, env: { ...process.env, ELECTRON_RUN_AS_NODE: '', TERN_PROFILE: profile }, stdio: ['ignore', 'ignore', 'pipe'],
     });
     const endpoint = await new Promise((resolve, reject) => {
