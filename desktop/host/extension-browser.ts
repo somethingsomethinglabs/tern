@@ -22,6 +22,7 @@ export class ExtensionBrowser {
   private api: ElectronChromeExtensions;
   private popups = new Map<string, BrowserWindow>();
   private windows = new Set<BrowserWindow>();
+  private tabWindows = new Set<BrowserWindow>();
   private selected?: WebContents;
   private observed = new WeakSet<WebContents>();
   private registeringPage = false;
@@ -37,7 +38,7 @@ export class ExtensionBrowser {
       createTab: async (details) => {
         const url = details.url || "about:blank";
         if (this.extensionURL(url)) {
-          const popup = this.openURL(url, false);
+          const popup = this.openURL(url, false, true);
           return [popup.webContents, popup];
         }
         return [pages.create(url, details.active !== false), window];
@@ -45,12 +46,17 @@ export class ExtensionBrowser {
       selectTab: (contents) => {
         if (!this.registeringPage) pages.select(contents);
       },
-      removeTab: (contents) => pages.close(contents),
+      removeTab: (contents) => {
+        if (contents.isDestroyed()) return;
+        const owner = BrowserWindow.fromWebContents(contents);
+        if (owner && this.tabWindows.has(owner)) owner.close();
+        else pages.close(contents);
+      },
       createWindow: async (details) => {
         const url = Array.isArray(details.url) ? details.url[0] : details.url;
         if (!url || !this.extensionURL(url))
           throw new Error("Only extension windows are supported.");
-        return this.openURL(url, false);
+        return this.openURL(url, false, true);
       },
       removeWindow: (target) => target.close(),
       // Optional native messaging and privacy control are not granted silently.
@@ -70,7 +76,10 @@ export class ExtensionBrowser {
     }
     installExtensionContexts(session, (id) =>
       [...this.windows].some(
-        (popup) => !popup.isDestroyed() && popup.webContents.id === id,
+        (popup) =>
+          !popup.isDestroyed() &&
+          !this.tabWindows.has(popup) &&
+          popup.webContents.id === id,
       ),
     );
     this.api.on(
@@ -207,7 +216,7 @@ export class ExtensionBrowser {
     this.openURL(url.href);
   }
 
-  private openURL(url: string, reuse = true) {
+  private openURL(url: string, reuse = true, asTab = false) {
     if (!this.extensionURL(url)) throw new Error("Unknown extension address.");
     const id = new URL(url).hostname;
     const existing = this.popups.get(id);
@@ -241,8 +250,10 @@ export class ExtensionBrowser {
     });
     this.popups.set(id, popup);
     this.windows.add(popup);
+    if (asTab) this.tabWindows.add(popup);
     popup.on("closed", () => {
       this.windows.delete(popup);
+      this.tabWindows.delete(popup);
       if (this.popups.get(id) === popup) this.popups.delete(id);
     });
     const openWebsite = (value: string) => {
@@ -269,6 +280,16 @@ export class ExtensionBrowser {
         popup.close();
       }
     });
+    if (asTab) {
+      // Extension-created windows contain tabs. Bitwarden queries those tabs
+      // to find and close its completed single-action passkey prompts.
+      this.registeringPage = true;
+      try {
+        this.api.addTab(popup.webContents, popup);
+      } finally {
+        this.registeringPage = false;
+      }
+    }
     void popup.loadURL(url).catch((error) => this.pages.error(String(error)));
     return popup;
   }

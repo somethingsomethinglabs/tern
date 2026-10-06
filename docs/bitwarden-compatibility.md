@@ -18,6 +18,8 @@ Electron also misclassified these windows in `runtime.getContexts`. A small exte
 
 The adapter supplies command listeners but does not dispatch keyboard commands itself. Tern matches manifest shortcuts and sends the event through the pinned adapter's channel, waking Manifest V3 workers first. The controlled UI test covers this dependency.
 
+Extension-created popout windows also contain registered tabs and report `TAB` contexts. Bitwarden finds its single-action passkey prompts through `tabs.query` before closing their windows after completion. Previously, Tern created those windows without registering their tabs, leaving completed prompts open. Both `windows.remove` and `tabs.remove` now close these popouts. The regression tests follow Bitwarden's tab lookup and verify that closing the prompt leaves the ordinary vault popup open.
+
 The build copies the adapter preload with its three development API argument/result logs removed. The host registers that copy before loading extensions. A build assertion requires review if the pinned dependency's logging changes.
 
 ## Verification and remaining limits
