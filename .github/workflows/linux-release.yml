@@ -1,4 +1,4 @@
-name: Linux release candidate
+name: Linux and Android release candidate
 on:
   workflow_dispatch:
     inputs:
@@ -49,3 +49,8 @@ jobs:
             desktop/release/tern-linux-x64.tar.gz
             desktop/release/tern-linux-x64.manifest.json
           retention-days: 14
+  android:
+    uses: ./.github/workflows/android-release.yml
+    secrets: inherit
+    permissions:
+      contents: write

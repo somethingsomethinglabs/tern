@@ -39,7 +39,7 @@ bash desktop/scripts/check-cookie-encryption.sh
 
 It uses a private D-Bus session and temporary keyring. It never opens or changes the normal desktop keyring.
 
-The GitHub Actions `Linux release candidate` workflow runs these checks and uploads signed candidate artifacts. It does not publish a GitHub Release. The `TERN_RELEASE_SIGNING_KEY_PEM` repository secret is configured and matches the public key in `desktop/resources/update-config.json`. Native AI verification remains a local release check because CI has no pinned model fixture.
+The GitHub Actions `Linux and Android release candidate` workflow runs these checks and uploads signed Linux and Android candidate artifacts. It does not publish a GitHub Release. Publishing a release triggers the Android workflow, which attaches the signed APK and checksum to that release. See `mobile/README.md` for Android signing and device checks. The `TERN_RELEASE_SIGNING_KEY_PEM` repository secret is configured and matches the public key in `desktop/resources/update-config.json`. Native AI verification remains a local release check because CI has no pinned model fixture.
 
 ## Publisher key and signing
 

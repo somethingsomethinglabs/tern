@@ -1,0 +1,55 @@
+name: Android release
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@d0e6e4dbf773b98efde945f446d2099b2c0d8fd2
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@035682743ab223ec9c6169af09811dff8247e520
+      - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0'
+      - run: npm ci
+      - name: Build signed APK
+        env:
+          TERN_ANDROID_KEYSTORE_BASE64: ${{ secrets.TERN_ANDROID_KEYSTORE_BASE64 }}
+          TERN_ANDROID_STORE_PASSWORD: ${{ secrets.TERN_ANDROID_STORE_PASSWORD }}
+          TERN_ANDROID_KEY_PASSWORD: ${{ secrets.TERN_ANDROID_KEY_PASSWORD }}
+        run: |
+          umask 077
+          export TERN_ANDROID_KEYSTORE="$RUNNER_TEMP/tern-android.p12"
+          test -n "$TERN_ANDROID_KEYSTORE_BASE64"
+          printf '%s' "$TERN_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$TERN_ANDROID_KEYSTORE"
+          npm run apk:release --workspace=@tern/mobile
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-release
+          path: |
+            mobile/artifacts/tern-android.apk
+            mobile/artifacts/tern-android.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Attach to published release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version="$(node -p "require('./desktop/package.json').version")"
+          test "$RELEASE_TAG" = "linux-v$version" || test "$RELEASE_TAG" = "v$version"
+          gh release upload "$RELEASE_TAG" mobile/artifacts/tern-android.apk mobile/artifacts/tern-android.apk.sha256 --repo "$GITHUB_REPOSITORY" --clobber

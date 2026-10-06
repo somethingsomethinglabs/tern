@@ -1,5 +1,9 @@
 apply plugin: 'com.android.application'
 
+def releaseVersion = new groovy.json.JsonSlurper().parse(file('../../../desktop/package.json')).version
+def versionParts = releaseVersion.tokenize('.').collect { it.toInteger() }
+def releaseStore = System.getenv('TERN_ANDROID_KEYSTORE')
+
 android {
     namespace = "app.tern.browser"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +11,8 @@ android {
         applicationId "app.tern.browser"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode versionParts[0] * 1000000 + versionParts[1] * 1000 + versionParts[2]
+        versionName releaseVersion
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +20,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (releaseStore) {
+                storeFile file(releaseStore)
+                storePassword System.getenv('TERN_ANDROID_STORE_PASSWORD')
+                keyAlias 'tern'
+                keyPassword System.getenv('TERN_ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

@@ -9,6 +9,7 @@
     "build": "npm run typecheck && vite build",
     "sync": "npm run build && cap sync android",
     "apk": "npm run sync && node scripts/build-apk.mjs",
+    "apk:release": "npm run sync && node scripts/build-apk.mjs --release",
     "test:android": "node scripts/test-android.mjs",
     "brand:generate": "node scripts/generate-icons.mjs"
   },
