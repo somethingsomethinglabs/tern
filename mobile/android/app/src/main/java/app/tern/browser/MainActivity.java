@@ -15,11 +15,22 @@ import com.getcapacitor.JSObject;
 
 public class MainActivity extends BridgeActivity {
     private ValueCallback<Uri[]> fileCallback;
+    private android.webkit.WebView fileOwner;
+    private String fileOwnerUrl;
+    private boolean fileRequestOutstanding;
     private final ActivityResultLauncher<Intent> picker = registerForActivityResult(
         new ActivityResultContracts.StartActivityForResult(), result -> {
+            fileRequestOutstanding = false;
             if (fileCallback != null) {
-                fileCallback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(result.getResultCode(), result.getData()));
-                fileCallback = null;
+                Uri[] selected = WebChromeClient.FileChooserParams.parseResult(result.getResultCode(), result.getData());
+                if (fileOwner == null || !fileOwner.isAttachedToWindow() ||
+                    !java.util.Objects.equals(fileOwner.getUrl(), fileOwnerUrl)) selected = null;
+                if (selected != null) for (Uri uri : selected) {
+                    if (uri == null || !"content".equals(uri.getScheme()) || uri.getAuthority() == null ||
+                        (getPackageName() + ".fileprovider").equals(uri.getAuthority())) { selected = null; break; }
+                }
+                fileCallback.onReceiveValue(selected);
+                fileCallback = null; fileOwner = null; fileOwnerUrl = null;
             }
         });
     @Override public void onCreate(Bundle savedInstanceState) {
@@ -41,12 +52,18 @@ public class MainActivity extends BridgeActivity {
             }
         });
     }
-    public boolean chooseFile(ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params) {
-        if (fileCallback != null) fileCallback.onReceiveValue(null);
-        fileCallback = callback;
+    public boolean chooseFile(ValueCallback<Uri[]> callback, WebChromeClient.FileChooserParams params, android.webkit.WebView owner) {
+        if (fileRequestOutstanding) { callback.onReceiveValue(null); return true; }
+        fileCallback = callback; fileOwner = owner; fileOwnerUrl = owner.getUrl();
+        fileRequestOutstanding = true;
         try { picker.launch(params.createIntent()); }
-        catch (Exception error) { fileCallback.onReceiveValue(null); fileCallback = null; return false; }
+        catch (Exception error) { fileCallback.onReceiveValue(null); fileCallback = null; fileOwner = null; fileOwnerUrl = null; fileRequestOutstanding = false; return true; }
         return true;
+    }
+    public void cancelFileSelectionFor(android.webkit.WebView owner) {
+        if (fileOwner == owner && fileCallback != null) {
+            fileCallback.onReceiveValue(null); fileCallback = null; fileOwner = null; fileOwnerUrl = null;
+        }
     }
     @Override public void onDestroy() {
         if (fileCallback != null) fileCallback.onReceiveValue(null);

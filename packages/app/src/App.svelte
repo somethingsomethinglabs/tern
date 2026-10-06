@@ -19,6 +19,7 @@
   import DownloadSimple from "phosphor-svelte/lib/DownloadSimple";
   import CaretDown from "phosphor-svelte/lib/CaretDown";
   import SquaresFour from "phosphor-svelte/lib/SquaresFour";
+  import FolderPlus from "phosphor-svelte/lib/FolderPlus";
   import type {
     Bridge,
     Command,
@@ -28,12 +29,16 @@
     PageState,
   } from "@tern/core/contracts";
   import "./styles.css";
+  import SiteInformation from "./SiteInformation.svelte";
   import SettingsPage from "./SettingsPage.svelte";
+  import SearchResults, { type SearchViewState } from "./SearchResults.svelte";
   import TaskNotes from "./TaskNotes.svelte";
   import TaskOverview from "./TaskOverview.svelte";
   import ExtensionsPanel from "./ExtensionsPanel.svelte";
   import SnapshotButton from "./SnapshotButton.svelte";
+  import CookieDeleteButton from "./CookieDeleteButton.svelte";
   import NewTask from "./NewTask.svelte";
+  import ShortcutHelp from "./ShortcutHelp.svelte";
   import StartTaskForm from "./StartTaskForm.svelte";
   import { basicTaskPlan } from "@tern/core/task-plan";
   import { entrance } from "./motion.svelte";
@@ -50,11 +55,13 @@
 
   const mobile = $derived(!!snapshot?.capabilities?.mobile);
   let address = $state.raw("");
+  const searchViews: Record<string, SearchViewState> = {};
+  const saveSearchView = (id: string) => (view: SearchViewState) => { searchViews[id] = view; };
 
   let query = $state.raw("");
 
   let modal = $state.raw<
-    "pause" | "rename" | "downloads" | "extensions" | "startTask" | "settle" | null
+    "pause" | "rename" | "downloads" | "extensions" | "startTask" | "settle" | "site" | null
   >(null);
 
   let name = $state.raw("");
@@ -81,7 +88,7 @@
   let drawer = $state.raw(false);
 
   let settingsOpen = $state.raw(false);
-  let settingsSection = $state.raw<"localAI" | "shortcuts" | null>(null);
+  let settingsSection = $state.raw<"localAI" | "shortcuts" | "search" | null>(null);
   let returnToTaskStart = $state.raw(false);
   const openSettings = (section: typeof settingsSection = null, returnToStart = false) => {
     settingsSection = section;
@@ -100,7 +107,18 @@
 
   let toolbarHidden = $state.raw(false);
 
-  let groups = $state.raw({ Later: false, Settled: false });
+  let groups = $state.raw({ Later: false, Settled: true });
+  let newTaskOpen = $state.raw(false);
+  let newTaskButton = $state.raw<HTMLButtonElement | null>(null);
+  let shortcutHelpOpen = $state.raw(false);
+  let settledIds = new Set<string>();
+  $effect(() => {
+    const ids = new Set(snapshot?.tasks.filter((task) => task.lifecycle === "Settled").map((task) => task.id));
+    if ([...ids].some((id) => !settledIds.has(id))) {
+      untrack(() => { groups = { ...groups, Settled: true }; });
+    }
+    settledIds = ids;
+  });
 
   let dragging = $state.raw<string | null>(null);
 
@@ -138,6 +156,10 @@
   let newTaskInput = $state.raw<HTMLInputElement | null>(null);
   let notesButton = $state.raw<HTMLButtonElement | null>(null);
   let searchInput = $state.raw<HTMLInputElement | null>(null);
+  const showNewTask = () => {
+    newTaskOpen = true;
+    afterFrame(() => newTaskInput?.focus());
+  };
   const task = $derived(
     snapshot?.tasks.find((task) => task.id === snapshot?.selectedTaskId),
   );
@@ -155,7 +177,8 @@
       !settingsOpen &&
       !overviewOpen &&
       !modal &&
-      !finding,
+      !finding &&
+      !snapshot?.siteInfo?.permissions.some(permission => permission.name === "media" && permission.state === "allowed"),
   );
   const showAddress = () => {
     toolbarHidden = false;
@@ -331,7 +354,7 @@
           label: selected.every((page) => !page.live || page.error)
             ? "Reopen tabs"
             : "Reload tabs",
-          disabled: !selected.some((page) => page.url),
+          disabled: !selected.some((page) => page.url || page.search),
           run: () => run("reload"),
         },
         {
@@ -358,8 +381,8 @@
         },
       },
       {
-        label: target.live && !target.error ? "Reload tab" : "Reopen tab",
-        disabled: !target.url,
+        label: target.search ? "Run search again" : target.live && !target.error ? "Reload tab" : "Reopen tab",
+        disabled: !target.url && !target.search,
         run: () => {
           void send({
             type: target.live && !target.error ? "reload" : "reopen",
@@ -433,11 +456,11 @@
         );
     });
   });
-  const addressSource = $derived(JSON.stringify([page?.id, page?.url]));
+  const addressSource = $derived(JSON.stringify([page?.id, page?.url, page?.search?.query]));
   $effect(() => {
     addressSource;
     return untrack(() => {
-      address = page?.url ?? "";
+      address = page?.search?.query ?? page?.url ?? "";
       toolbarHidden = false;
     });
   });
@@ -454,12 +477,14 @@
       visible:
         !modal &&
         !menu &&
+        !shortcutHelpOpen &&
         !mobileTasksOpen &&
         !(mobile && drawer) &&
         !settingsOpen &&
         !overviewOpen &&
         !(window.innerWidth <= 800 && drawer) &&
         !!page?.live &&
+        !page.search &&
         !page.error &&
         rect.width > 0 &&
         rect.height > 0,
@@ -486,6 +511,7 @@
     mobile;
     mobileTasksOpen;
     menu;
+    shortcutHelpOpen;
     modal;
     settingsOpen;
     overviewOpen;
@@ -633,62 +659,59 @@
       </button>
       <span class="brand-logo" role="img" aria-label="Tern"></span>
     </div>
-    <button
-      class="overview-button"
-      aria-label="Task overview"
-      aria-pressed={overviewOpen && !settingsOpen}
-      title="Task overview"
-      onclick={() => {
-        finding = false;
-        menu = null;
-        void send({ type: "showOverview" });
-      }}
-    >
-      <SquaresFour aria-hidden="true" size={18}></SquaresFour>
-      <span>Overview</span>
-    </button>
-    <div class="task-search">
-      <MagnifyingGlass aria-hidden="true" size={18}></MagnifyingGlass>
-      <input
-        bind:this={searchInput}
-        aria-label="Search tasks and pages"
-        aria-describedby={mobile ? undefined : "task-shortcut-hint"}
-        placeholder="Find a task or page"
-        value={query}
-        oninput={(event) => (query = event.currentTarget.value)}
-      />
-      {#if query}<button
-          aria-label="Clear search"
-          title="Clear search"
+    <div class="sidebar-search-row">
+      <div class="task-search">
+        <MagnifyingGlass aria-hidden="true" size={19}></MagnifyingGlass>
+        <input
+          bind:this={searchInput}
+          aria-label="Search tasks and pages"
+          placeholder="Search"
+          value={query}
+          oninput={(event) => (query = event.currentTarget.value)}
+        />
+        {#if query}<button
+            aria-label="Clear search"
+            title="Clear search"
+            onclick={() => { query = ""; searchInput?.focus(); }}
+          ><X aria-hidden="true" size={16}></X></button>{/if}
+      </div>
+      <div class="sidebar-search-actions" role="group" aria-label="Task navigation and creation">
+        <button
+          class="overview-button"
+          aria-label="Task overview"
+          aria-pressed={overviewOpen && !settingsOpen}
+          title="Task overview"
+          onclick={() => { finding = false; menu = null; void send({ type: "showOverview" }); }}
+        ><SquaresFour aria-hidden="true" size={20}></SquaresFour></button>
+        <button
+          bind:this={newTaskButton}
+          aria-label="New task"
+          title="New task"
+          aria-expanded={newTaskOpen}
+          aria-controls="sidebar-new-task"
           onclick={() => {
-            query = "";
-            searchInput?.focus();
-          }}><X aria-hidden="true" size={16}></X></button
-        >{/if}
+            if (newTaskOpen) newTaskOpen = false;
+            else showNewTask();
+          }}
+        ><FolderPlus aria-hidden="true" size={21}></FolderPlus></button>
+        <button
+          aria-label="Start from a goal"
+          title="Start from a goal"
+          onclick={() => { error = ""; modal = "startTask"; }}
+        ><NotePencil aria-hidden="true" size={21}></NotePencil></button>
+      </div>
     </div>
-    {#if !mobile}<button
-        id="task-shortcut-hint"
-        class="shortcut-discovery"
-        title="Keyboard shortcuts: Alt and a letter switches tasks; Alt and a number switches tabs"
-        onclick={() => openSettings("shortcuts")}
-      >Hold <kbd>Alt</kbd> to show shortcuts</button>{/if}
-    <button
-      class="start-task-button"
-      onclick={() => {
-        error = "";
-        modal = "startTask";
-      }}
-    >
-      Start from a goal
-    </button>
-    <NewTask
-      bind:inputRef={newTaskInput}
-      tasks={snapshot?.tasks ?? []}
-      onCreate={(title) => {
-        query = "";
-        return send({ type: "createTask", title });
-      }}
-    ></NewTask>
+    <div id="sidebar-new-task" class="sidebar-new-task" hidden={!newTaskOpen}>
+      <NewTask
+        bind:inputRef={newTaskInput}
+        tasks={snapshot?.tasks ?? []}
+        onCancel={() => { newTaskOpen = false; newTaskButton?.focus(); }}
+        onCreate={async (title) => {
+          query = "";
+          return send({ type: "createTask", title });
+        }}
+      ></NewTask>
+    </div>
     <nav aria-label="Tasks">
       {#each ["Active", "Later", "Settled"] as const as group (group)}<section
           class={"task-group " + (dropTarget === group ? "drop-target" : "")}
@@ -705,22 +728,12 @@
               aria-label={group + " tasks"}
               aria-expanded={groups[group] || !!query}
               aria-controls={"group-" + group}
-              onclick={() =>
-                (groups = {
-                  ...groups,
-                  [group]: !groups[group],
-                })}
+              onclick={() => (groups = { ...groups, [group]: !groups[group] })}
             >
-              <CaretRight
-                aria-hidden="true"
-                size={14}
-                class={groups[group] ? "expanded" : ""}
-              ></CaretRight>
-              {group}
-              <span>
-                {snapshot?.tasks.filter((task) => task.lifecycle === group)
-                  .length ?? 0}
-              </span>
+              <span class="group-name">{group}</span>
+              <span class="group-rule" aria-hidden="true"></span>
+              <span class="group-count">{snapshot?.tasks.filter((task) => task.lifecycle === group).length ?? 0}</span>
+              <CaretRight aria-hidden="true" size={14} class={groups[group] || !!query ? "expanded" : ""}></CaretRight>
             </button>{/if}
           <div
             id={"group-" + group}
@@ -811,7 +824,8 @@
                         {String.fromCharCode(
                           65 + (snapshot?.tasks ?? []).indexOf(item),
                         )}
-                      </kbd>{:else}<CaretRight aria-hidden="true" size={15}
+                      </kbd>{:else if task?.id === item.id}<CaretDown aria-hidden="true" size={15}
+                      ></CaretDown>{:else}<CaretRight aria-hidden="true" size={15}
                       ></CaretRight>{/if}
                     <span>{item.title}</span>
                   </button>
@@ -829,6 +843,7 @@
                       >
                         <PencilSimple aria-hidden="true" size={16}
                         ></PencilSimple>
+                        <span>Rename</span>
                       </button>
                       {#if task.lifecycle === "Active"}<button
                           aria-label="Put aside"
@@ -838,12 +853,14 @@
                           }}
                         >
                           <Pause aria-hidden="true" size={16}></Pause>
+                          <span>Put aside</span>
                         </button>{:else}<button
                           aria-label="Resume task"
                           title="Resume task"
                           onclick={() => void send({ type: "resume" })}
                         >
                           <Play aria-hidden="true" size={16}></Play>
+                          <span>Resume</span>
                         </button>{/if}
                       {#if task.lifecycle !== "Settled"}<button
                           aria-label="Settle"
@@ -852,6 +869,7 @@
                             void send({ type: "settle", id: task.id })}
                         >
                           <Check aria-hidden="true" size={16}></Check>
+                          <span>Settle</span>
                         </button>{/if}
                     </div>{/if}
                 </div>
@@ -911,14 +929,14 @@
                           })}
                       >
                         {#if hints && index < 10}<kbd>{(index + 1) % 10}</kbd
-                          >{:else}<Globe aria-hidden="true" size={14}
+                          >{:else if tab.search}<MagnifyingGlass aria-hidden="true" size={14} />{:else}<Globe aria-hidden="true" size={14}
                           ></Globe>{/if}
                         <span>{tab.title}</span>
-                        <i
+                        {#if !tab.search}<i
                           title={tab.live ? "Live page" : "Reference to reopen"}
                         >
                           {tab.live ? "●" : "○"}
-                        </i>
+                        </i>{/if}
                       </button>{/each}
                     <button
                       class="add-page"
@@ -933,6 +951,9 @@
                   </div>{/if}
               </div>{/each}
           </div>
+          {#if group === "Active" && !query && snapshot && !snapshot.tasks.some((task) => task.lifecycle === "Active")}
+            <p class="group-empty">No active tasks. Create one above or resume a task from Later.</p>
+          {/if}
         </section>{/each}
       {#if query && snapshot && !(snapshot?.tasks ?? []).some( (task) => (task.title + " " + (snapshot?.pages ?? [])
                 .filter((page) => page.taskId === task.id)
@@ -947,17 +968,14 @@
         </p>{/if}
     </nav>
     <div class="sidebar-foot">
-      {#if hints}<p class="shortcut-help">
-          Alt + letter: task · number: tab
-        </p>{/if}
       <button
         class="settings-button"
         title="Settings"
+        aria-label="Settings"
+        aria-current={settingsOpen ? "page" : undefined}
         onclick={() => openSettings()}
-      >
-        <GearSix aria-hidden="true" size={19}></GearSix>
-        <span>Settings</span>
-      </button>
+      ><GearSix aria-hidden="true" size={21}></GearSix></button>
+      {#if !mobile}<ShortcutHelp bind:open={shortcutHelpOpen}></ShortcutHelp>{/if}
     </div>
   </aside>
   <main>
@@ -994,7 +1012,7 @@
       </button>
       <button
         aria-label={page?.loading ? "Stop loading" : "Reload"}
-        disabled={overviewOpen || !page?.live}
+        disabled={overviewOpen || (!page?.live && !page?.search)}
         onclick={() => void send({ type: page?.loading ? "stop" : "reload" })}
       >
         {#if page?.loading}<X aria-hidden="true" size={18}
@@ -1009,7 +1027,9 @@
           });
         }}
       >
-        <Globe aria-hidden="true" size={16}></Globe>
+        {#if page?.search}<MagnifyingGlass aria-hidden="true" size={16} />{:else if snapshot?.siteInfo}<button type="button" class="site-info-button" aria-label="Site information" title="Site information" onclick={() => (modal = "site")}>
+          <Globe aria-hidden="true" size={16} />{#if !snapshot.siteInfo.secure}<span>Not secure</span>{/if}
+        </button>{:else}<Globe aria-hidden="true" size={16}></Globe>{/if}
         <input
           bind:this={addressInput}
           aria-label="Address or search"
@@ -1022,6 +1042,9 @@
           onfocus={(event) => event.currentTarget.select()}
         />
       </form>
+      {#if snapshot?.siteInfo?.permissions.some(permission => permission.name === "media" && permission.state === "allowed")}<button class="permission-indicator" onclick={() => (modal = "site")}>Camera or microphone allowed</button>{/if}
+      {#if snapshot?.blockedPopups?.length}<button onclick={() => (modal = "site")}>Popup blocked</button>{/if}
+      {#if page?.sourceSearchId && snapshot?.pages.some(source => source.id === page.sourceSearchId && source.search)}<button class="return-to-results" onclick={() => void send({ type: "returnToSearch", id: page!.sourceSearchId! })}>Return to results</button>{/if}
       <button
         aria-label={selectedPageIds.length > 1
           ? "Close selected tabs"
@@ -1062,6 +1085,10 @@
       >
         <DownloadSimple aria-hidden="true" size={21}></DownloadSimple>
       </button>
+      {#if bridge.cookies}<CookieDeleteButton
+          disabled={!page?.live || !/^https?:\/\//.test(page.url) || settingsOpen || overviewOpen || !!modal || (window.innerWidth <= 800 && drawer)}
+          {send}
+        />{/if}
       {#if snapshot?.preferences.showSnapshotTool}<SnapshotButton
           disabled={!page?.live ||
             !!page.error ||
@@ -1151,6 +1178,7 @@
     {#if settingsOpen && snapshot}<SettingsPage
         {snapshot}
         {send}
+        cookies={bridge.cookies}
         initialSection={settingsSection}
         closeLabel={returnToTaskStart ? "Back to task setup" : "Back to browsing"}
         close={closeSettings}
@@ -1165,7 +1193,10 @@
       ></TaskOverview>{/if}
     <div class="content" hidden={settingsOpen || overviewOpen}>
       <div bind:this={site} class="website">
-        {#if !page?.live && !page?.error}<div class="empty">
+        {#if page?.search && task}
+          {#key page.id}<SearchResults {page} {task} searchState={snapshot?.searches?.[page.id]} {send}
+            view={searchViews[page.id]} saveView={saveSearchView(page.id)} settings={() => openSettings("search")} />{/key}
+        {:else if !page?.live && !page?.error}<div class="empty">
             <span class="tern-glyph" aria-hidden="true"></span>
             <h2>
               {page?.url
@@ -1195,7 +1226,7 @@
                       type: "setPreferences",
                       patch: { sidebarCollapsed: false },
                     });
-                  afterFrame(() => newTaskInput?.focus());
+                  showNewTask();
                 }}
               >
                 Create your first task
@@ -1248,8 +1279,8 @@
         status={snapshot?.taskStartStatus ?? ""}
         enabled={!!snapshot?.preferences.summaryModel}
         aiAvailable={snapshot?.capabilities?.localAI !== false}
-        firstResult={snapshot?.capabilities?.firstSearchResult !== false}
-        engine={{
+        firstResult={snapshot?.preferences.searchView === "external" && snapshot?.capabilities?.firstSearchResult !== false}
+        engine={snapshot?.preferences.searchView !== "external" ? "Web search" : {
           duckduckgo: "DuckDuckGo",
           google: "Google",
           bing: "Bing",
@@ -1275,7 +1306,7 @@
             if (success && dialogGeneration === submittedDialog) modal = null;
           }}>Settle anyway</button>
         </footer>
-      </section>{:else}{#if modal === "extensions"}<ExtensionsPanel
+      </section>{:else}{#if modal === "site" && snapshot}<SiteInformation {snapshot} {send} close={() => (modal = null)} />{:else if modal === "extensions"}<ExtensionsPanel
           extensions={snapshot?.extensions ?? []}
           notice={snapshot?.notice ?? ""}
           {send}
@@ -1286,6 +1317,10 @@
                 {#each snapshot.downloads as download (download.id)}<div>
                     <strong>{download.name}</strong>
                     <p>{download.status}</p>
+                    {#if download.totalBytes && download.receivedBytes !== undefined}<progress max={download.totalBytes} value={download.receivedBytes} aria-label={`Download progress for ${download.name}`}></progress>{/if}
+                    {#if download.canCancel}<button onclick={() => void send({ type: "downloadAction", id: download.id, action: "cancel" })}>Cancel download</button>{/if}
+                    {#if download.canResume}<button onclick={() => void send({ type: "downloadAction", id: download.id, action: "resume" })}>Resume download</button>{/if}
+                    {#if download.saved}<button onclick={() => void send({ type: "downloadAction", id: download.id, action: "showFolder" })}>Show in folder</button>{/if}
                   </div>{/each}
               </div>{:else}<p>No downloads in this session.</p>{/if}
             <footer>

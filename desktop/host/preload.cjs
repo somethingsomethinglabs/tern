@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("tern", {
   snapshot: () => ipcRenderer.invoke("workspace:read"),
   command: (command) => ipcRenderer.invoke("workspace:command", command),
+  cookies: (request) => ipcRenderer.invoke("browser:cookies", request),
   layout: (bounds) => ipcRenderer.send("page:layout", bounds),
   subscribe: (listener) => {
     const handler = (_, state) => listener(state);

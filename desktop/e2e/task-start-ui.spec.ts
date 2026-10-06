@@ -83,7 +83,7 @@ async function fillRequest() {
 }
 test.beforeEach(async () => {
   profile = await mkdtemp(join(tmpdir(), "tern-task-start-"));
-  await writeFile(join(profile, "preferences.json"), JSON.stringify({ summaryModel: "", searchEngine: "brave" }));
+  await writeFile(join(profile, "preferences.json"), JSON.stringify({ summaryModel: "", searchEngine: "brave", searchView: "external" }));
   await writeFile(join(profile, "workspace.json"), JSON.stringify({ version: 1, selectedTaskId: "existing",
     tasks: [{ id: "existing", title: "Existing work", note: "", lifecycle: "Active", selectedPageId: "draft" }],
     pages: [{ id: "draft", taskId: "existing", title: "Existing work", url: origin }] }));
@@ -134,7 +134,7 @@ test("one request opens first results, retains search history and persists desti
   await expect(resultPage).toHaveURL(pages[0].url);
   await close();
   // Avoid generating overview descriptions during the persistence check.
-  await writeFile(join(profile, "preferences.json"), JSON.stringify({ summaryModel: "", searchEngine: "brave" }));
+  await writeFile(join(profile, "preferences.json"), JSON.stringify({ summaryModel: "", searchEngine: "brave", searchView: "external" }));
   await launch();
   const reopened = await shell.evaluate(() => window.tern.snapshot());
   expect(reopened.tasks.find((item) => item.id === task.id)?.request).toBe(request);
@@ -323,8 +323,11 @@ test("task setup keeps its draft through AI settings and shows the first result 
   await expect(shell.locator(".original-request")).toContainText(request);
 });
 
-test("the persistent shortcut hint opens the keyboard map", async () => {
-  await shell.getByRole("button", { name: "Hold Alt to show shortcuts", exact: true }).click();
-  await expect(shell.getByRole("heading", { name: "Keyboard shortcuts", exact: true })).toBeFocused();
-  await expect(shell.getByText("Switch tasks in creation order", { exact: true })).toBeVisible();
+test("the persistent shortcut control exposes keyboard hints and dismisses with Escape", async () => {
+  const button = shell.getByRole("button", { name: "Keyboard shortcuts", exact: true });
+  await button.click();
+  await expect(shell.getByRole("region", { name: "Keyboard shortcut hints" })).toBeVisible();
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+  await button.press("Escape");
+  await expect(shell.getByRole("region", { name: "Keyboard shortcut hints" })).toBeHidden();
 });

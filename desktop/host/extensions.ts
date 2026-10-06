@@ -76,9 +76,17 @@ export class ExtensionLibrary {
     }
   }
   private async load(path: string) {
+    // Check before loading: background workers can start during loadExtension.
+    const manifest = JSON.parse(readFileSync(join(path, "manifest.json"), "utf8"));
+    if (manifest.permissions?.includes("nativeMessaging"))
+      throw new Error("Extensions declaring native messaging are blocked in this release.");
     const extension = await this.session.extensions.loadExtension(path, {
       allowFileAccess: false,
     });
+    if (extension.manifest.permissions?.includes("nativeMessaging")) {
+      this.session.extensions.removeExtension(extension.id);
+      throw new Error("Extensions declaring native messaging are blocked in this release.");
+    }
     const entry = {
       id: extension.id,
       name: extension.name,

@@ -2,18 +2,23 @@
   import { tick, untrack } from "svelte";
   import type { Command, Snapshot, Preferences } from "@tern/core/contracts";
   import { BUILTIN_MODEL, builtinModel } from "@tern/core/local-ai-config";
+  import type { Bridge } from "@tern/core/contracts";
+  import CookieManager from "./CookieManager.svelte";
   type Props = {
     snapshot: Snapshot;
     send(command: Command): Promise<boolean>;
     close(): void;
-    initialSection?: "localAI" | "shortcuts" | null;
+    cookies?: Bridge["cookies"];
+    initialSection?: "localAI" | "shortcuts" | "search" | null;
     closeLabel?: string;
   };
-  let { snapshot, send, close, initialSection = null, closeLabel = "Back to browsing" }: Props = $props();
+  let { snapshot, send, close, cookies, initialSection = null, closeLabel = "Back to browsing" }: Props = $props();
+  let cookiesOpen = $state(false);
+  let searchHeading = $state.raw<HTMLHeadingElement>();
   let aiSelect = $state.raw<HTMLSelectElement>();
   let shortcutHeading = $state.raw<HTMLHeadingElement>();
   $effect(() => {
-    const target = initialSection === "localAI" ? aiSelect : initialSection === "shortcuts" ? shortcutHeading : undefined;
+    const target = initialSection === "localAI" ? aiSelect : initialSection === "shortcuts" ? shortcutHeading : initialSection === "search" ? searchHeading : undefined;
     if (!target) return;
     void tick().then(() => {
       if (!target.isConnected) return;
@@ -86,12 +91,34 @@
   <header>
     <div>
       <h1>Settings</h1>
-      <p>Make Tern work the way you browse.</p>
     </div>
     <button onclick={close}>{closeLabel}</button>
   </header>
   <section>
-    <h2>Search</h2>
+    <h2 bind:this={searchHeading} tabindex="-1">Search</h2>
+    {#if !snapshot.capabilities?.mobile}
+    <label>
+      Search view
+      <select aria-label="Search view" value={prefs.searchView ?? "reading-list"} onchange={event => void update({ searchView: event.currentTarget.value as "reading-list" | "external" })}>
+        <option value="reading-list">Reading list</option>
+        <option value="external">Search engine website</option>
+      </select>
+    </label>
+    {/if}
+    {#if !snapshot.capabilities?.mobile && prefs.searchView !== "external"}
+      <fieldset>
+        <legend>Search providers</legend>
+        {#each ["duckduckgo", "bing"] as provider}
+          <label><input type="checkbox" checked={(prefs.searchProviders ?? ["duckduckgo", "bing"]).includes(provider as "duckduckgo" | "bing")}
+            disabled={(prefs.searchProviders ?? ["duckduckgo", "bing"]).length === 1 && (prefs.searchProviders ?? ["duckduckgo", "bing"]).includes(provider as "duckduckgo" | "bing")}
+            onchange={event => {
+              const current = prefs.searchProviders ?? ["duckduckgo", "bing"];
+              const next = event.currentTarget.checked ? [...new Set([...current, provider])] : current.filter(item => item !== provider);
+              void update({ searchProviders: next as ("duckduckgo" | "bing")[], searxngURL: "https://search.tern.invalid/" });
+            }} />{provider === "bing" ? "Bing" : "DuckDuckGo"}</label>
+        {/each}
+      </fieldset>
+    {:else}
     <label>
       Default search engine
       <select
@@ -109,7 +136,7 @@
         <option value="brave">Brave Search</option>
       </select>
     </label>
-    <p>Used when you type a search in the address bar.</p>
+    {/if}
   </section>
   <section>
     <h2>Appearance</h2>
@@ -291,8 +318,16 @@
         Change download folder
       </button>
     </section>{/if}
+  {#if snapshot.updates}<section>
+    <h2>Updates</h2>
+    <p role="status">{snapshot.updates.status}</p>
+    <button disabled={!snapshot.updates.configured || snapshot.updates.busy} onclick={() => void send({ type: "checkForUpdates" })}>Check for updates</button>
+    {#if snapshot.updates.version}<button disabled={snapshot.updates.busy} onclick={() => void send({ type: "installUpdate" })}>Install verified update</button>{/if}
+  </section>{/if}
   <section>
     <h2>Privacy and storage</h2>
+    {#if snapshot.security}<p>{snapshot.security.detail}</p>{/if}
+    {#if snapshot.siteInfo}<p>Manage permissions for {snapshot.siteInfo.origin} using Site information in the address bar.</p>{/if}
     <p>
       Tasks, notes and website cookies stay in this browser profile. Reopening
       Tern restores page addresses; unsaved forms are not restored.
@@ -300,6 +335,12 @@
     <button onclick={() => void send({ type: "clearCache" })}>
       Clear cached website files
     </button>
+    {#if cookies}
+      <button aria-expanded={cookiesOpen} onclick={() => (cookiesOpen = !cookiesOpen)}>
+        {cookiesOpen ? "Close cookie manager" : "Manage cookies"}
+      </button>
+      {#if cookiesOpen}<CookieManager request={cookies} />{/if}
+    {/if}
     <p>
       Websites can copy to the clipboard. Clipboard reading, camera, microphone,
       location and notification requests remain blocked in this build.

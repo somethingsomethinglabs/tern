@@ -1,7 +1,7 @@
 {
   "name": "@tern/desktop",
   "productName": "Tern",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A browser for settling and resuming tasks",
   "private": true,
   "type": "module",
@@ -18,24 +18,29 @@
     "package": "npm run build && node scripts/package.mjs",
     "evaluate:ai": "node scripts/evaluate-local-ai.mjs",
     "pretypecheck": "npm run build --workspace=@tern/core && npm run typecheck --workspace=@tern/app",
-    "test:package": "node scripts/check-package.mjs"
+    "test:package": "node scripts/check-package.mjs",
+    "test:search": "node --test test/metasearch.test.mjs",
+    "prebuild": "node scripts/patch-local-ai.mjs"
   },
   "devDependencies": {
     "@electron/asar": "4.3.0",
+    "@electron/fuses": "2.1.3",
     "@electron/packager": "20.3.0",
     "@playwright/test": "1.63.0",
+    "@sveltejs/vite-plugin-svelte": "5.1.1",
+    "@tern/app": "0.1.0",
     "@types/adm-zip": "0.5.8",
     "@types/node": "^24.0.0",
-    "electron": "44.4.3",
+    "electron": "44.5.1",
     "typescript": "7.0.2",
-    "vite": "6.4.3",
-    "@tern/app": "0.1.0",
-    "@sveltejs/vite-plugin-svelte": "5.1.1"
+    "vite": "6.4.3"
   },
   "dependencies": {
+    "@tern/core": "0.1.0",
     "adm-zip": "0.6.1",
+    "cheerio": "1.2.0",
     "electron-chrome-extensions": "4.9.0",
-    "node-llama-cpp": "3.21.1",
-    "@tern/core": "0.1.0"
-  }
+    "node-llama-cpp": "3.21.1"
+  },
+  "license": "GPL-3.0-only"
 }

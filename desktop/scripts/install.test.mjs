@@ -115,3 +115,15 @@ test("rebranding leaves unrelated old-name files intact", async (t) => {
   assert.equal(await readFile(legacyLauncher, "utf8"), "unrelated command");
   assert.equal(await readFile(legacyEntry, "utf8"), "unrelated menu entry");
 });
+
+ test("encrypted profiles cannot be downgraded through rollback or a manual install", async t => {
+  const {source, run, root} = await fixture(t);
+  assert.equal(run("--from", source).status, 0);
+  await writeFile(join(source, "resources/security.json"), JSON.stringify({cookieEncryption:true,hardened:true}));
+  assert.equal(run("--from", source).status, 0);
+  const encrypted = await readlink(join(root, "current"));
+  assert.match(run("--rollback").stderr, /without cookie encryption is blocked/);
+  await rm(join(source, "resources/security.json"));
+  assert.match(run("--from", source).stderr, /without cookie encryption is blocked/);
+  assert.equal(await readlink(join(root, "current")), encrypted);
+});

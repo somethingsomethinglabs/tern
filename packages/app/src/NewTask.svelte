@@ -1,14 +1,16 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
-  import CaretDown from "phosphor-svelte/lib/CaretDown";
+  import Plus from "phosphor-svelte/lib/Plus";
   import type { Task } from "@tern/core/contracts";
   let {
     tasks,
     onCreate,
+    onCancel,
     inputRef = $bindable(null),
   }: {
     tasks: Task[];
     onCreate: (title: string) => Promise<boolean>;
+    onCancel?: () => void;
     inputRef: HTMLInputElement | null;
   } = $props();
   let title = $state.raw("");
@@ -111,7 +113,7 @@
     submitting = false;
   }}
 >
-  <CaretDown size={18} aria-hidden="true"></CaretDown>
+  <Plus size={18} aria-hidden="true"></Plus>
   <input
     bind:this={inputRef}
     aria-label="New task"
@@ -130,9 +132,13 @@
       if (event.key === "Escape" && !busy) {
         title = "";
         event.currentTarget.blur();
+        onCancel?.();
       }
     }}
   />
+  <button type="submit" disabled={!title.trim() || submitting} aria-label="Create task">
+    {submitting ? "Adding…" : "Add"}
+  </button>
   <kbd id="new-task-hint" aria-label="Press Enter to create task">
     Enter ↵
   </kbd>

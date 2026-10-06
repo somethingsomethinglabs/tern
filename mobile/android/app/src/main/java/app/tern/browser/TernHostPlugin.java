@@ -137,6 +137,7 @@ public class TernHostPlugin extends Plugin {
                 return true;
             }
             @Override public void onPageStarted(WebView v, String url, Bitmap icon) {
+                ((MainActivity) getActivity()).cancelFileSelectionFor(v);
                 if (!webURL(url)) { v.stopLoading(); return; }
                 errors.remove(id); loading.add(id); emit(id);
             }
@@ -151,6 +152,7 @@ public class TernHostPlugin extends Plugin {
             }
             @Override public boolean onRenderProcessGone(WebView v, RenderProcessGoneDetail detail) {
                 // Several tabs can share a renderer; Android invokes this for each affected view.
+                ((MainActivity) getActivity()).cancelFileSelectionFor(v);
                 pages.remove(id); loading.remove(id); layer.removeView(v); v.destroy(); show();
                 sendEvent(new JSObject().put("type", "page").put("id", id).put("url", "").put("title", "")
                     .put("live", false).put("loading", false).put("error", "This page was closed by Android. Reopen it to continue.")
@@ -167,7 +169,7 @@ public class TernHostPlugin extends Plugin {
                 callback.invoke(origin, false, false); notice("Location access is not available in this build.");
             }
             @Override public boolean onShowFileChooser(WebView v, android.webkit.ValueCallback<Uri[]> callback, FileChooserParams params) {
-                return ((MainActivity) getActivity()).chooseFile(callback, params);
+                return ((MainActivity) getActivity()).chooseFile(callback, params, v);
             }
             @Override public boolean onCreateWindow(WebView v, boolean dialog, boolean userGesture, Message message) {
                 if (!userGesture) { notice("An automatic popup was blocked."); return false; }
@@ -225,7 +227,7 @@ public class TernHostPlugin extends Plugin {
         ui(call, () -> {
             String id = call.getString("id"); WebView view = pages.remove(id);
             errors.remove(id); loading.remove(id);
-            if (view != null) { layer.removeView(view); view.stopLoading(); view.destroy(); }
+            if (view != null) { ((MainActivity) getActivity()).cancelFileSelectionFor(view); layer.removeView(view); view.stopLoading(); view.destroy(); }
             show();
         });
     }

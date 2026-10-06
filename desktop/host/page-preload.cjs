@@ -26,3 +26,8 @@ window.addEventListener(
   },
   { passive: true, capture: true },
 );
+
+// Browser popup decisions use trusted input only, never a website-supplied flag.
+for (const name of ["pointerdown", "keydown"]) window.addEventListener(name, event => {
+  if (event.isTrusted) ipcRenderer.send("guest:gesture");
+}, { capture: true, passive: true });

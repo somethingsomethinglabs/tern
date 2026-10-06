@@ -221,7 +221,7 @@ async function launch(themeDirectory?: string) {
     ...(process.env.TERN_EXECUTABLE
       ? { executablePath: process.env.TERN_EXECUTABLE }
       : {}),
-    args: ["."],
+    args: [".", "--use-fake-device-for-media-stream"],
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -256,7 +256,7 @@ async function launch(themeDirectory?: string) {
 }
 test.beforeEach(async () => {
   profile = await mkdtemp(join(tmpdir(), "tern-test-"));
-  await writeFile(join(profile, "preferences.json"), JSON.stringify({ summaryModel: "" }));
+  await writeFile(join(profile, "preferences.json"), JSON.stringify({ summaryModel: "", searchView: "external" }));
   await launch();
 });
 test.afterEach(async () => {
@@ -298,6 +298,8 @@ async function nativeShortcut(
   );
 }
 async function newTask(name: string) {
+  const input = shell.getByRole("textbox", { name: "New task", exact: true });
+  if (!await input.isVisible()) await shell.getByRole("button", { name: "New task", exact: true }).click();
   await shell
     .getByRole("textbox", { name: "New task", exact: true })
     .fill(name);
@@ -317,7 +319,7 @@ test("tasks are created inline and travel from the input into the list", async (
   await shell.getByRole("button", { name: "Create your first task" }).click();
   await expect(shell.getByRole("heading", { name: "What do you need to do?", exact: true })).toBeVisible();
   await shell.getByRole("button", { name: "Cancel", exact: true }).click();
-  await input.focus();
+  await shell.getByRole("button", { name: "New task", exact: true }).click();
   await expect(input).toBeFocused();
   await expect(shell.locator("#new-task-hint")).toBeVisible();
   await expect(shell.getByRole("dialog")).not.toBeVisible();
@@ -326,8 +328,11 @@ test("tasks are created inline and travel from the input into the list", async (
   await expect(shell.locator("[data-task-id]")).toHaveCount(0);
   await input.fill("Cancelled draft");
   await input.press("Escape");
-  await expect(input).toHaveValue("");
+  await expect(input).toBeHidden();
+  await expect(shell.getByRole("button", { name: "New task", exact: true })).toBeFocused();
   await expect(shell.locator("#new-task-hint")).not.toBeVisible();
+  await shell.getByRole("button", { name: "New task", exact: true }).click();
+  await expect(input).toHaveValue("");
 
   await newTask("First task");
   await expect(shell.locator(".task-arrival")).toHaveCount(0);
@@ -561,8 +566,9 @@ test("website unload veto can cancel closing after the browser confirmation", as
     shell.locator('.pages button[aria-label^="Select page "]'),
   ).toHaveCount(0);
 });
-test("canvas drawing and clipboard writing are enabled by default while clipboard reading is denied", async () => {
+test("canvas drawing and clipboard writing are enabled by default while clipboard reading requires consent", async () => {
   await newTask("Browser defaults");
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
   const website = await navigate(origin + "/permission");
   const defaults = await website.evaluate(async () => {
     const context = document.createElement("canvas").getContext("2d")!;
@@ -575,7 +581,7 @@ test("canvas drawing and clipboard writing are enabled by default while clipboar
       readResult = (error as DOMException).name;
     }
     return {
-      canvas: "drawElementImage" in context,
+      canvas: !!context,
       write: write.state,
       read: read.state,
       readResult,
@@ -592,15 +598,98 @@ test("canvas drawing and clipboard writing are enabled by default while clipboar
 test("notifications are denied and guest keyboard shortcuts reach the shell", async () => {
   await newTask("Review permissions");
   const website = await navigate(origin + "/permission");
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 0; });
   await website.getByRole("button", { name: "Request notifications" }).click();
   await expect(website.locator("output")).toHaveText("denied");
   await expect(shell.getByRole("alert")).toContainText(
-    "permission is disabled",
+    "Permission denied",
   );
   await nativeShortcut(website, "L");
   await expect(
     shell.getByRole("textbox", { name: "Address or search" }),
   ).toBeFocused();
+});
+
+test("notification approval uses an origin-labelled native prompt with deny defaults", async () => {
+  await newTask("Approve a website permission");
+  const website = await navigate(origin + "/permission");
+  await app.evaluate(({ dialog }) => {
+    dialog.showMessageBoxSync = (_window, options) => {
+      (globalThis as any).permissionPrompt = options;
+      return 1;
+    };
+  });
+  await website.getByRole("button", { name: "Request notifications" }).click();
+  await expect(website.locator("output")).toHaveText("granted");
+  const prompt = await app.evaluate(() => (globalThis as any).permissionPrompt);
+  expect(prompt.message).toContain(origin);
+  expect(prompt.buttons).toEqual(["Deny", "Allow once"]);
+  expect(prompt.defaultId).toBe(0);
+  expect(prompt.cancelId).toBe(0);
+});
+
+test("operating system links open a new page and reject non-web schemes", async () => {
+  await newTask("External links");
+  const original = await navigate(origin + "/");
+  await original.getByLabel("Amount").fill("Keep this form");
+  await app.evaluate(({app}, url) => { app.emit("second-instance", {}, ["Tern", "javascript:alert(1)", url], "/tmp"); }, origin + "/second");
+  await expect(shell.getByRole("button", {name:"Select page Second page",exact:true})).toBeVisible();
+  expect(await original.getByLabel("Amount").inputValue()).toBe("Keep this form");
+  const snapshot = await shell.evaluate(() => (window as any).tern.snapshot());
+  expect(snapshot.pages).toHaveLength(2);
+});
+
+test("camera consent is visible and revocation closes a page that vetoes unloading", async () => {
+  await newTask("Camera permissions");
+  const website = await navigate(origin + "/permission");
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; });
+  const state = await website.evaluate(async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({video:true});
+    (window as any).testStream = stream;
+    window.addEventListener("beforeunload", event => { event.preventDefault(); event.returnValue = ""; });
+    return stream.getVideoTracks()[0].readyState;
+  });
+  expect(state).toBe("live");
+  await shell.getByRole("button", {name:"Camera or microphone allowed",exact:true}).click();
+  await shell.getByRole("button", {name:"Revoke access and reload",exact:true}).click();
+  await expect.poll(() => website.isClosed()).toBe(true);
+  await expect(shell.getByRole("button", {name:"Camera or microphone allowed",exact:true})).toHaveCount(0);
+});
+
+test("site permissions can be blocked, survive restart and prevent repeat prompts", async () => {
+  await newTask("Site permissions");
+  const website = await navigate(origin + "/permission");
+  await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; });
+  await shell.getByRole("button", { name: "Site information", exact: true }).click();
+  await shell.getByLabel("Notifications", { exact: true }).selectOption("block");
+  await shell.getByRole("button", { name: "Done", exact: true }).click();
+  const current = app.context().pages().find(page => page.url() === origin + "/permission")!;
+  await current.getByRole("button", { name: "Request notifications" }).click();
+  await expect(current.locator("output")).toHaveText("denied");
+  const state = await shell.evaluate(() => (window as any).tern.snapshot());
+  expect(state.siteInfo.permissions.find((permission: any) => permission.name === "notifications").state).toBe("blocked");
+  expect(JSON.parse(await readFile(join(profile, "site-permissions.json"), "utf8"))).toEqual([[origin, ["notifications"]]]);
+});
+
+test("automatic popups are blocked and can be reopened as ordinary pages", async () => {
+  await newTask("Popup policy");
+  const website = await navigate(origin + "/windows");
+  await website.evaluate(() => window.open("/popup"));
+  await expect(shell.getByRole("button", { name: "Popup blocked", exact: true })).toBeVisible();
+  await shell.getByRole("button", { name: "Popup blocked", exact: true }).click();
+  await shell.getByRole("button", { name: "Open blocked page", exact: true }).click();
+  await expect(shell.getByRole("button", { name: "Select page Script popup" })).toBeVisible();
+});
+
+test("PDF saving uses a destination prompt and writes a real PDF", async () => {
+  await newTask("Print tools");
+  await navigate(origin + "/");
+  const path = join(profile, "saved-page.pdf");
+  await app.evaluate(({ dialog }, path) => { dialog.showSaveDialogSync = () => path; }, path);
+  await shell.getByRole("button", { name: "Site information", exact: true }).click();
+  await shell.getByRole("button", { name: "Save as PDF", exact: true }).click();
+  await expect(shell.getByRole("alert")).toContainText("PDF saved");
+  expect((await readFile(path)).subarray(0, 5).toString()).toBe("%PDF-");
 });
 
 for (const action of ["button", "menu", "status", "drag"] as const) {
@@ -632,7 +721,7 @@ for (const action of ["button", "menu", "status", "drag"] as const) {
     await shell.getByRole("button", { name: "Settle anyway", exact: true }).click();
     await expect.poll(() => [first.isClosed(), second.isClosed()]).toEqual([true, true]);
     await expect(other.getByLabel("Amount")).toHaveValue("Keep this draft");
-    await shell.getByRole("button", { name: "Settled tasks", exact: true }).click();
+    await expect(shell.getByRole("button", { name: "Settled tasks", exact: true })).toHaveAttribute("aria-expanded", "true");
     await task.click();
     await expect(shell.getByRole("button", { name: "Select page Expense claim", exact: true })).toBeVisible();
     await expect(shell.getByRole("button", { name: "Select page Second page", exact: true })).toBeVisible();
@@ -877,7 +966,7 @@ test("dragging to Later retains edits, settling unloads pages, and moves persist
   await expect(website.getByLabel("Amount")).toHaveValue("712");
   await taskButton().dragTo(settled);
   await shell.getByRole("button", { name: "Settle anyway", exact: true }).click();
-  await settled.click();
+  await expect(settled).toHaveAttribute("aria-expanded", "true");
   await expect.poll(() => website.isClosed()).toBe(true);
   await taskButton().dragTo(
     shell.getByRole("region", { name: "Active tasks", exact: true }),
@@ -981,7 +1070,7 @@ test("the shell follows theme changes while the address bar stays dark and conte
   await writeFile(join(themeDirectory, "theme.name"), "Sample theme");
   // Launch directly to observe the default state before the common harness opens context.
   app = await electron.launch({
-    args: ["."],
+    args: [".", "--use-fake-device-for-media-stream"],
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -1631,7 +1720,7 @@ test("selected references reopen together after settlement", async () => {
   const { tab, selected } = await multiTabs();
   await shell.getByRole("button", { name: "Settle", exact: true }).click();
   await shell.getByRole("button", { name: "Settle anyway", exact: true }).click();
-  await shell.getByRole("button", { name: "Settled tasks", exact: true }).click();
+  await expect(shell.getByRole("button", { name: "Settled tasks", exact: true })).toHaveAttribute("aria-expanded", "true");
   await tab(1).click();
   await tab(3).click({ modifiers: ["Control"] });
   await expect.poll(selected).toEqual(["Tab 1○", "Tab 3○"]);

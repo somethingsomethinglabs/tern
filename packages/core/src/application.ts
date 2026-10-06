@@ -4,6 +4,7 @@ import { emptyWorkspace, parseWorkspace } from "./workspace.js";
 import { PageSelection } from "./page-selection.js";
 import { addressURL, isWebURL, searchURL } from "./navigation.js";
 import { basicTaskPlan, plannedWorkspace } from "./task-plan.js";
+import { SearchController, createSearxngTransport, DEFAULT_SEARXNG_URL, externalShortcut, type SearchTransport } from "./search.js";
 import { validatePreferences } from "./preferences.js";
 
 export type BrowserEvent =
@@ -34,6 +35,7 @@ export interface Platform {
 export type ApplicationOptions = {
   capabilities?: Snapshot["capabilities"];
   maxLivePages?: number;
+  searchTransport?: SearchTransport;
 };
 
 // One state owner; adapters expose native operations, never task mutations.
@@ -41,6 +43,7 @@ export class BrowserApplication implements Bridge {
   private workspace: Workspace = emptyWorkspace();
   private model: WorkspaceModel;
   private selection = new PageSelection();
+  private searches: SearchController;
   private pages = new Map<string, Partial<PageState>>();
   private listeners = new Set<(state: Snapshot) => void>();
   private shortcutListeners = new Set<(key: string) => void>();
@@ -51,11 +54,15 @@ export class BrowserApplication implements Bridge {
   private notice = "";
   private downloads: Snapshot["downloads"] = [];
   private preferences: Preferences = {
-    searchEngine: "duckduckgo", autoHideToolbar: false, sidebarCollapsed: false,
+    searchEngine: "duckduckgo", searchView: "reading-list", searxngURL: DEFAULT_SEARXNG_URL, autoHideToolbar: false, sidebarCollapsed: false,
     showSnapshotTool: false, preloadLinks: false, summaryModel: "", defaultZoom: 1,
     askDownloadLocation: false, downloadDirectory: "/Download",
   };
-  private constructor(private platform: Platform, private options: ApplicationOptions) { this.model = new WorkspaceModel(this.workspace, platform); }
+  private constructor(private platform: Platform, private options: ApplicationOptions) { this.model = new WorkspaceModel(this.workspace, platform);
+    this.searches = new SearchController(this.model, options.searchTransport ?? createSearxngTransport(), () => {
+      void this.enqueue(async () => { await this.save().catch(() => {}); await this.activate(); this.publish(); });
+    }, page => this.openPage(page), () => !this.overview);
+  }
 
   static async open(platform: Platform, options: ApplicationOptions = {}) {
     const app = new BrowserApplication(platform, options);
@@ -73,6 +80,14 @@ export class BrowserApplication implements Bridge {
       app.writable = false;
       app.storageError = "Saved data could not be read. It has been preserved; changes cannot be saved. Restart Tern to retry.";
     }
+    if (options.capabilities?.mobile) {
+      app.preferences.searchView = "external";
+      // Convert lists saved by the earlier Android prototype into normal pages.
+      for (const page of app.workspace.pages) {
+        if (page.search) { page.url = searchURL(page.search.query, app.preferences.searchEngine); delete page.search; }
+        delete page.sourceSearchId;
+      }
+    }
     await platform.setZoom(app.preferences.defaultZoom);
     await platform.listen(event => {
       if (event.type === "shortcut") { for (const listener of app.shortcutListeners) listener(event.key); return; }
@@ -87,9 +102,9 @@ export class BrowserApplication implements Bridge {
   }
   private state(): Snapshot {
     return structuredClone({ ...this.workspace,
-      capabilities: this.options.capabilities,
+      capabilities: this.options.capabilities, searches: this.searches.snapshot(),
       selectedPageIds: this.selection.selected(this.workspace), overviewOpen: this.overview,
-      pages: this.workspace.pages.map(page => ({ ...page, live: false, loading: false, error: "", canGoBack: false, canGoForward: false, ...this.pages.get(page.id) })),
+      pages: this.workspace.pages.map(page => ({ ...page, live: false, loading: false, error: "", canGoForward: false, ...this.pages.get(page.id), ...(page.search ? { loading: !!this.searches.state(page.id)?.loading } : {}), canGoBack: !!this.pages.get(page.id)?.canGoBack || !!page.sourceSearchId && !!this.model.page(page.sourceSearchId)?.search })),
       preferences: this.preferences, theme: { name: "Tern", background: "#181b1e", foreground: "#e0e4e7", accent: "#a4c4b5" },
       summaries: {}, summaryStatus: "", pendingSummaryTaskIds: [], taskContext: null, contextStatus: "", contextPending: false,
       taskStartStatus: "", taskStartPending: false, extensions: [], downloads: this.downloads, notice: this.notice, storageError: this.storageError,
@@ -115,6 +130,7 @@ export class BrowserApplication implements Bridge {
     await this.platform.activate(!this.overview && id && this.pages.get(id)?.live ? id : null);
   }
   private async openPage(page: PageRecord) {
+    if (page.search) { this.searches.ensure(page); return; }
     if (!page.url) return;
     if (this.pages.get(page.id)?.live) {
       if (this.pages.get(page.id)?.error) {
@@ -139,8 +155,11 @@ export class BrowserApplication implements Bridge {
   });
   private async dispatch(value: Command): Promise<void | { createdTaskId: string }> {
     let createdTaskId: string | undefined;
-    const effects = this.model.command(value);
-    if (effects) {
+    const searchHandled = await this.searches.command(value, this.preferences);
+    if (searchHandled) this.overview = false;
+    const effects = searchHandled ? null : this.model.command(value);
+    if (searchHandled) { /* Shared search commands have already changed the workspace. */ }
+    else if (effects) {
       if (effects.releaseTaskPages)
         for (const page of this.workspace.pages.filter(page => page.taskId === effects.releaseTaskPages)) await this.release(page.id);
       if (value.type === "createTask") this.overview = false;
@@ -171,7 +190,7 @@ export class BrowserApplication implements Bridge {
         if (value.useAI) throw new Error("Local AI is not available in this build.");
         const request = checkedText(value.request, 1000).trim();
         if (!request) throw new Error("Describe what you need to do.");
-        const next = plannedWorkspace(this.workspace, basicTaskPlan(request), request, this.preferences.searchEngine, this.platform.id, value.title);
+        const next = plannedWorkspace(this.workspace, basicTaskPlan(request), request, this.preferences.searchEngine, this.platform.id, value.title, this.preferences.searchView !== "external" ? this.preferences.searxngURL ?? DEFAULT_SEARXNG_URL : undefined);
         await this.save(next);
         Object.assign(this.workspace, next);
         createdTaskId = next.selectedTaskId!;
@@ -187,19 +206,21 @@ export class BrowserApplication implements Bridge {
         break;
       }
       case "navigate": {
-        const url = addressURL(checkedText(value.address, 8192), this.preferences.searchEngine);
+        if (this.searches.fromAddress(value.address, this.preferences)) { this.overview = false; break; }
+        const url = externalShortcut(value.address) ?? addressURL(checkedText(value.address, 8192), this.preferences.searchEngine);
         const task = this.requireTask();
-        const page = this.model.page() ?? this.model.newPage(task.id);
+        const page = !this.model.page() || this.model.page()?.search ? this.model.newPage(task.id) : this.model.page()!;
         page.url = url;
         this.overview = false;
         if (this.pages.get(page.id)?.live) await this.platform.navigate(page.id, url);
         else await this.openPage(page);
         break;
       }
-      case "reopen": await this.openPage(this.requirePage(value.id)); this.overview = false; break;
+      case "reopen": if (this.requirePage(value.id).search) this.searches.refresh(this.requirePage(value.id), this.preferences); else await this.openPage(this.requirePage(value.id)); this.overview = false; break;
       case "closePage": await this.closePages([this.requirePage(value.id)]); break;
       case "reload": {
         const page = this.requirePage(value.id);
+        if (page.search) { this.searches.refresh(page, this.preferences); break; }
         if (await this.platform.confirm("Reload this page? Unsaved website changes may be lost.")) {
           if (this.pages.get(page.id)?.live) await this.platform.action(page.id, "reload");
           else await this.openPage(page);
@@ -209,7 +230,9 @@ export class BrowserApplication implements Bridge {
       case "duplicatePage": {
         const page = this.requirePage(value.id);
         this.model.selectTask(page.taskId);
-        await this.openPage(this.model.newPage(page.taskId, page.url));
+        const copy = this.model.newPage(page.taskId, page.url);
+        if (page.search) { copy.search = structuredClone(page.search); copy.title = page.title; }
+        await this.openPage(copy);
         this.overview = false;
         break;
       }
@@ -220,16 +243,24 @@ export class BrowserApplication implements Bridge {
         if (value.action === "close") await this.closePages(pages);
         else if (value.action === "copyAddresses") await this.platform.clipboard(pages.map(page => page.url).join("\n"));
         else if (value.action === "duplicate") {
-          const copies = pages.map(page => this.model.newPage(page.taskId, page.url));
+          const copies = pages.map(page => {
+            const copy = this.model.newPage(page.taskId, page.url);
+            if (page.search) { copy.search = structuredClone(page.search); copy.title = page.title; }
+            return copy;
+          });
           this.selection.replace(this.workspace, copies);
           for (const page of copies) await this.openPage(page);
         } else if (value.action === "reload" && await this.platform.confirm("Reload selected tabs? Unsaved changes may be lost."))
-          for (const page of pages) { if (this.pages.get(page.id)?.live) await this.platform.action(page.id, "reload"); else await this.openPage(page); }
+          for (const page of pages) { if (page.search) this.searches.refresh(page, this.preferences); else if (this.pages.get(page.id)?.live) await this.platform.action(page.id, "reload"); else await this.openPage(page); }
         break;
       }
       case "searchTask":
       case "openFindingSource": {
         const task = this.requireTask(value.id);
+        if (value.type === "searchTask" && this.preferences.searchView !== "external") {
+          this.searches.create(task.id, checkedText(value.query, 160), this.preferences);
+          this.overview = false; break;
+        }
         const url = value.type === "searchTask" ? searchURL(checkedText(value.query, 160), this.preferences.searchEngine)
           : task.findings?.find(finding => finding.id === value.findingId)?.source?.url;
         if (!url || !isWebURL(url)) throw new Error("Source unavailable.");
@@ -242,16 +273,19 @@ export class BrowserApplication implements Bridge {
         if (this.overview) { await this.platform.exit(); return; }
         const page = this.model.page();
         if (page && this.pages.get(page.id)?.canGoBack) await this.platform.action(page.id, "back");
+        else if (page?.sourceSearchId) await this.searches.command({ type: "returnToSearch", id: page.sourceSearchId }, this.preferences);
         else this.overview = true;
         break;
       }
       case "forward": case "stop": case "find": case "stopFind": {
         const page = this.model.page();
+        if (page?.search) { if (value.type === "stop") this.searches.stop(page.id); break; }
         if (page) await this.platform.action(page.id, value.type, value.type === "find" ? { text: value.text, backward: value.backward } : {});
         break;
       }
       case "setPreferences": {
         const next = validatePreferences(this.preferences, value.patch);
+        if (this.options.capabilities?.mobile) next.searchView = "external";
         if (next.summaryModel || next.preloadLinks || next.showSnapshotTool) throw new Error("This feature is not available in this build.");
         this.preferences = next;
         await this.platform.setZoom(next.defaultZoom);
@@ -262,6 +296,8 @@ export class BrowserApplication implements Bridge {
       case "cancelTaskStart": case "cancelTaskContext": break;
       default: throw new Error("This feature is not available in this build.");
     }
+    this.searches.prune();
+    const selected = this.model.page(); if (selected?.search && !this.overview) this.searches.ensure(selected);
     if (!this.overview) this.model.recordActivity();
     await this.save();
     await this.activate();

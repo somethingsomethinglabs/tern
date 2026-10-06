@@ -40,10 +40,8 @@
   <h2 id="dialog-title">What do you need to do?</h2>
   <p>
     {enabled
-      ? "Describe your goal. Tern will name the task, save its goal and run two or three focused searches and open the first web result from each."
-      : !aiAvailable
-        ? "Tern will save your request as a task and open a search. Your goal and notes stay with the task."
-        : "Local AI is off. Tern will save your request as a task and open the first web result for your request. Enable local AI in Settings for a task name and focused searches."}
+      ? "Create a task and run two or three searches based on your request."
+      : "Create a task and search your request."}
   </p>
   {#if aiAvailable && !enabled}<button type="button" disabled={pending} onclick={configureAI}>Set up local AI</button>{/if}
   <label for="task-request">Your request</label>
@@ -79,7 +77,7 @@
     >
     {#if enabled && !pending}<button
         type="button"
-        title="Save your request and open the first search result"
+        title="Save your request and search without AI"
         disabled={!request.trim()}
         onclick={() => start(false)}>Create without AI</button
       >{/if}

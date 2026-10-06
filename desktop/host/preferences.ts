@@ -21,6 +21,9 @@ export class BrowserPreferences {
     this.path = join(directory, "preferences.json");
     this.value = {
       searchEngine: "duckduckgo",
+      searchView: "reading-list",
+      searxngURL: "https://search.tern.invalid/",
+      searchProviders: ["duckduckgo", "bing"],
       autoHideToolbar: true,
       sidebarCollapsed: false,
       showSnapshotTool: true,

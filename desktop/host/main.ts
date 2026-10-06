@@ -1,3 +1,5 @@
+import { SearchController, BUILTIN_SEARCH_URL, externalShortcut } from "@tern/core/search";
+import { Metasearch } from "./metasearch.js";
 import { WorkspaceModel, checkedText } from "@tern/core/workspace-model";
 import { emptyWorkspace } from "@tern/core/workspace";
 import { isWebURL, addressURL, searchURL } from "@tern/core/navigation";
@@ -11,6 +13,8 @@ import {
   ipcMain,
   dialog,
   clipboard,
+  safeStorage,
+  shell,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
   type WebContents,
@@ -47,15 +51,12 @@ import { TaskStarter } from "./task-start.js";
 import { basicTaskPlan, plannedWorkspace } from "@tern/core/task-plan";
 import { profileDirectory, WEBSITE_PARTITION } from "./profile.js";
 import { PageRestoration } from "./page-restoration.js";
+import { CookieStore } from "./cookies.js";
+import { ReleaseUpdater } from "./updates.js";
+import { installWebsitePermissions } from "./website-permissions.js";
 import { followFirstSearchResult, stopFollowingSearch } from "./first-search-result.js";
 
 app.setName("Tern");
-// The app-wide equivalent of chrome://flags/#canvas-draw-element.
-const blinkFeatures = app.commandLine.getSwitchValue("enable-blink-features");
-app.commandLine.appendSwitch(
-  "enable-blink-features",
-  [blinkFeatures, "CanvasDrawElement"].filter(Boolean).join(","),
-);
 app.setPath("userData", profileDirectory(app.getPath("appData")));
 protocol.registerSchemesAsPrivileged([
   {
@@ -77,6 +78,17 @@ const preferences = new BrowserPreferences(
 );
 const workspace: Workspace = emptyWorkspace();
 const workspaceModel = new WorkspaceModel(workspace, { id: randomUUID, now: Date.now });
+const metasearch = new Metasearch(() => preferences.value.searchProviders ?? ["duckduckgo", "bing"]);
+const searches = new SearchController(workspaceModel, metasearch.transport, () => {
+  if (quitting) return;
+  storage.save(workspace);
+  layout();
+  publish();
+}, async page => {
+  if (views.size + restoration.size >= 100) { workspaceModel.removePage(page.id); throw new Error("Close a page before opening another."); }
+  overviewOpen = false;
+  showPage(page);
+}, () => !overviewOpen);
 const views = new Map<string, WebContentsView>();
 const pageSelection = new PageSelection();
 const startingSearches = new WeakSet<PageRecord>();
@@ -84,13 +96,22 @@ const preloadingState = new WeakMap<WebContents, boolean>();
 const preconnectedOrigins = new WeakMap<WebContents, Set<string>>();
 const restoration = new PageRestoration((id) => {
   const page = workspace.pages.find((page) => page.id === id);
-  if (!page?.url || quitting) return;
+  if (quitting || !page) return;
+  if (page.search) { searches.ensure(page); return; }
+  if (!page.url) return;
   return showPage(page);
 });
 const lostRenderers = new Set<string>();
 const errors = new Map<string, string>();
 let window: BrowserWindow;
 let guests: Session;
+let cookieStore: CookieStore;
+let updater: ReleaseUpdater;
+let permissionController: ReturnType<typeof installWebsitePermissions>;
+let cookieSecurity: NonNullable<Snapshot["security"]> = { cookieStorage: "development", detail: "Development build. Use an isolated profile for testing." };
+const recentGestures = new WeakMap<WebContents, number>();
+const blockedPopups = new Map<string, { opener: WebContents; url: string }>();
+const downloadItems = new Map<string, Electron.DownloadItem>();
 let extensions: ExtensionLibrary;
 let extensionBrowser: ExtensionBrowser;
 let theme = readTheme();
@@ -140,6 +161,7 @@ function unloadTaskPages(taskId: string) {
   }
 }
 function reopenPage(page: PageRecord) {
+  if (page.search) { metasearch.invalidate(page.search.query); searches.refresh(page, preferences.value); return; }
   if (!page.url) return;
   if (errors.has(page.id)) {
     const view = views.get(page.id);
@@ -171,6 +193,11 @@ function closePages(pages: PageRecord[]) {
 function snapshot(): Snapshot {
   return {
     ...workspace,
+    security: cookieSecurity,
+    updates: updater?.state,
+    siteInfo: permissionController?.snapshot(currentContents()),
+    blockedPopups: [...blockedPopups].filter(([, popup]) => popup.opener === currentContents()).map(([id, popup]) => ({ id, url: popup.url })),
+    searches: searches.snapshot(),
     selectedPageIds: pageSelection.selected(workspace),
     overviewOpen,
     summaries: taskSummaries.snapshot(
@@ -198,9 +225,9 @@ function snapshot(): Snapshot {
       return {
         ...page,
         live: !!contents && !lostRenderers.has(page.id),
-        loading: contents?.isLoading() ?? false,
+        loading: page.search ? !!searches.state(page.id)?.loading : contents?.isLoading() ?? false,
         error: errors.get(page.id) ?? "",
-        canGoBack: contents?.navigationHistory.canGoBack() ?? false,
+        canGoBack: (contents?.navigationHistory.canGoBack() ?? false) || !!workspace.pages.find(source => source.id === page.sourceSearchId && source.search),
         canGoForward: contents?.navigationHistory.canGoForward() ?? false,
       };
     }),
@@ -286,6 +313,7 @@ function showPage(
   window.contentView.addChildView(view);
   const contents = view.webContents;
   contents.on("dom-ready", () => {
+    recentGestures.delete(contents);
     preloadingState.delete(contents);
     preconnectedOrigins.delete(contents);
     layout();
@@ -358,6 +386,9 @@ function showPage(
       publish();
     }
   };
+  contents.on("will-frame-navigate", (event) => {
+    if (event.url !== "about:blank" && !isWebURL(event.url)) navigation(event, event.url);
+  });
   contents.on("will-navigate", navigation);
   contents.on("will-redirect", navigation);
   contents.on("will-prevent-unload", (event) => {
@@ -371,6 +402,7 @@ function showPage(
       event.preventDefault();
   });
   contents.on("destroyed", () => {
+    for (const [id, popup] of blockedPopups) if (popup.opener === contents) blockedPopups.delete(id);
     if (views.get(page.id) !== view) return;
     views.delete(page.id);
     window.contentView.removeChildView(view);
@@ -379,7 +411,19 @@ function showPage(
     publish();
     layout();
   });
+  const popupTimes: number[] = [];
   contents.setWindowOpenHandler((details) => {
+    const now = Date.now();
+    while (popupTimes.length && now - popupTimes[0] > 10000) popupTimes.shift();
+    if (contents !== currentContents() || !pageBounds.visible || Date.now() - (recentGestures.get(contents) ?? 0) > 1500 || popupTimes.length >= 3) {
+      if (isWebURL(details.url) && details.url.length <= 32768) {
+        while (blockedPopups.size >= 20) blockedPopups.delete(blockedPopups.keys().next().value!);
+        blockedPopups.set(randomUUID(), { opener: contents, url: details.url });
+      }
+      notice = "A background or repeated popup was blocked. Review it in Site information.";
+      publish(); return { action: "deny" };
+    }
+    popupTimes.push(now);
     if (!isWebURL(details.url) || views.size + restoration.size >= 100) {
       notice =
         "New window blocked. Only HTTP and HTTPS pages are supported, with up to 100 live pages.";
@@ -457,6 +501,11 @@ function keyboard(event: Electron.Event, input: Electron.Input) {
       : "hints:off",
   );
   if (input.type !== "keyDown") return;
+  if ((input.control || input.meta) && !input.alt && ["p", "s"].includes(key)) {
+    event.preventDefault();
+    void command({ type: key === "p" ? "printPage" : input.shift ? "savePDF" : "savePage" }).catch(error => { notice = String(error); publish(); });
+    return;
+  }
   if (
     key === "f12" ||
     ((input.control || input.meta) && input.shift && !input.alt && key === "i")
@@ -538,11 +587,80 @@ async function command(raw: unknown) {
   if (["openTask", "selectTask", "selectPage", "createTask", "showOverview", "newPage", "navigate", "suggestTaskContext"].includes(value.type))
     taskStarter.stop();
   let createdTaskId: string | undefined;
-  const effects = workspaceModel.command(value);
-  if (effects) {
+  const searchHandled = await searches.command(value, preferences.value);
+  if (searchHandled) overviewOpen = false;
+  const effects = searchHandled ? null : workspaceModel.command(value);
+  if (searchHandled) { /* Shared search commands have already changed the workspace. */ }
+  else if (effects) {
     if (effects.contextChanged) taskContexts.stop();
     if (effects.releaseTaskPages) unloadTaskPages(effects.releaseTaskPages);
   } else switch (value.type) {
+    case "checkForUpdates": await updater.check(); break;
+    case "installUpdate": await updater.install(); break;
+    case "setSitePermission":
+    case "resetSitePermissions": {
+      const origin = text(value.origin, 2048);
+      if (!isWebURL(origin) || new URL(origin).origin !== origin) throw new Error("Invalid website origin.");
+      const affected = [...views.values()].map(view => view.webContents).filter(contents =>
+        !contents.isDestroyed() && isWebURL(contents.getURL()) && new URL(contents.getURL()).origin === origin);
+      if (affected.length && !confirm("Reload this site's pages?",
+        "Changing permissions reloads every open page from this origin to stop camera, microphone and file access. Unsaved website changes may be lost.", "Reload and update")) return;
+      if (value.type === "setSitePermission") permissionController.setPolicy(origin, text(value.permission, 100), text(value.policy, 10));
+      else permissionController.revoke(origin);
+      for (const contents of affected) {
+        const page = workspace.pages.find(page => views.get(page.id)?.webContents === contents);
+        if (!page) continue;
+        const view = views.get(page.id)!;
+        views.delete(page.id); window.contentView.removeChildView(view);
+        // The user already confirmed discarding this origin's live state.
+        // Recreate the document so a beforeunload veto cannot retain capture.
+        contents.close({ waitForBeforeUnload: false });
+        showPage(page);
+      }
+      notice = "Website permissions updated. Camera and microphone streams stop when the pages reload.";
+      break;
+    }
+    case "openBlockedPopup": {
+      const popup = blockedPopups.get(text(value.id, 100));
+      if (!popup || popup.opener.isDestroyed() || popup.opener !== currentContents()) throw new Error("This blocked popup is no longer available.");
+      blockedPopups.delete(value.id);
+      const owner = workspace.pages.find(page => views.get(page.id)?.webContents === popup.opener);
+      if (!owner || !isWebURL(popup.url)) throw new Error("Invalid popup.");
+      showPage(newPage(owner.taskId, popup.url));
+      break;
+    }
+    case "printPage":
+    case "savePDF":
+    case "savePage": {
+      const contents = currentContents();
+      if (overviewOpen || !contents || contents.isDestroyed() || !isWebURL(contents.getURL())) throw new Error("Open a website first.");
+      if (value.type === "printPage") {
+        await new Promise<void>((resolve, reject) => contents.print({ silent: false }, (success, reason) => {
+          if (success || reason === "cancelled") resolve(); else reject(new Error(reason || "Printing failed."));
+        }));
+      } else {
+        const pdf = value.type === "savePDF";
+        const title = contents.getTitle().replace(/[\/\\\x00-\x1f\x7f]/g, "_").slice(0, 100) || "page";
+        const path = dialog.showSaveDialogSync(window, { title: pdf ? "Save as PDF" : "Save webpage",
+          defaultPath: join(preferences.value.downloadDirectory, title + (pdf ? ".pdf" : ".html")),
+          filters: [{ name: pdf ? "PDF" : "HTML", extensions: [pdf ? "pdf" : "html"] }] });
+        if (!path) return;
+        if (pdf) await writeFile(path, await contents.printToPDF({ printBackground: true }));
+        else await contents.savePage(path, "HTMLComplete");
+        downloads.unshift({ id: randomUUID(), name: basename(path), status: "Completed" }); downloads.splice(20);
+        notice = pdf ? "PDF saved." : "Webpage saved with its resources.";
+      }
+      break;
+    }
+    case "downloadAction": {
+      const item = downloadItems.get(text(value.id, 100));
+      if (!item) throw new Error("Download is no longer available.");
+      if (value.action === "cancel" && item.getState() === "progressing") item.cancel();
+      else if (value.action === "resume" && item.canResume()) item.resume();
+      else if (value.action === "showFolder" && item.getState() === "completed") shell.showItemInFolder(item.getSavePath());
+      else throw new Error("This download action is unavailable.");
+      break;
+    }
     case "cancelTaskStart":
       taskStarter.stop();
       break;
@@ -560,7 +678,7 @@ async function command(raw: unknown) {
       if (!plan || quitting) return;
       if (views.size + restoration.size + plan.searches.length > 100)
         throw new Error("Close a few pages before starting this task. Your request is still here.");
-      const next = plannedWorkspace(workspace, plan, request, preferences.value.searchEngine, randomUUID, value.title);
+      const next = plannedWorkspace(workspace, plan, request, preferences.value.searchEngine, randomUUID, value.title, preferences.value.searchView !== "external" ? preferences.value.searxngURL ?? BUILTIN_SEARCH_URL : undefined);
       const task = next.tasks[next.tasks.length - 1];
       const pages = next.pages.filter(page => page.taskId === task.id);
       if (!storage.save(next)) { publish(); throw new Error(storage.error); }
@@ -568,10 +686,29 @@ async function command(raw: unknown) {
       createdTaskId = task.id;
       overviewOpen = false;
       focusResumedPage = false;
-      for (const page of pages) startingSearches.add(page);
+      for (const page of pages) if (!page.search) startingSearches.add(page);
       restoration.resume(task.selectedPageId, pages.map((page) => page.id));
       recordActivity();
-      notice = "Each starting tab opens its first web result when available. Your goal and original request are in Task notes.";
+      notice = "";
+      break;
+    }
+    case "clearSiteCookies": {
+      const contents = currentContents();
+      if (overviewOpen || !pageBounds.visible || !contents || contents.isDestroyed() || !isWebURL(contents.getURL()))
+        throw new Error("Open a website before deleting its cookies.");
+      const site = new URL(contents.getURL());
+      const response = dialog.showMessageBoxSync(window, {
+        type: "question",
+        message: `Delete cookies for ${site.hostname}?`,
+        detail: "This can sign you out in every tab using this site, including its subdomains. Site-specific cookies from embedded content will also be cleared.\n\nTasks, notes and other website storage are kept. The page will stay open. Reload it afterwards to use the cleared cookies.",
+        buttons: ["Cancel", "Delete cookies"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      if (response !== 1) break;
+      await cookieStore.clearSite(site.origin);
+      notice = `Cookies deleted for ${site.hostname}. Reload the page to use the cleared cookies.`;
       break;
     }
     case "takeSnapshot": {
@@ -636,7 +773,11 @@ async function command(raw: unknown) {
       if (value.type === "searchTask") {
         const query = text(value.query, 160).trim();
         if (!query) throw new Error("Enter a search query.");
-        // Always a search, even if the model returns an address or URL scheme.
+        if (preferences.value.searchView !== "external") {
+          searches.create(task.id, query, preferences.value);
+          overviewOpen = false;
+          break;
+        }
         url = searchURL(query, preferences.value.searchEngine);
       } else {
         const source = task.findings?.find((finding) => finding.id === text(value.findingId, 100))?.source;
@@ -691,6 +832,7 @@ async function command(raw: unknown) {
         )
       ) {
         await guests.clearCache();
+        metasearch.clear();
         notice = "Cached website files cleared.";
       }
       break;
@@ -855,6 +997,7 @@ async function command(raw: unknown) {
       pageSelection.select(workspace, page, value.selection);
       const activeId = selectedTask()!.selectedPageId;
       if (activeId && restoration.has(activeId)) restoration.open(activeId);
+      const active = selectedPage(); if (active?.search) searches.ensure(active);
       break;
     }
     case "pageSelectionAction": {
@@ -876,7 +1019,11 @@ async function command(raw: unknown) {
             throw new Error("Close a page before opening more tabs.");
           if (pages.some(page => page.url && !isWebURL(page.url)))
             throw new Error("Unsupported page address.");
-          const copies = pages.map(page => newPage(page.taskId, page.url));
+          const copies = pages.map(page => {
+            const copy = newPage(page.taskId, page.url);
+            if (page.search) { copy.search = structuredClone(page.search); copy.title = page.title; searches.ensure(copy); }
+            return copy;
+          });
           pageSelection.replace(workspace, copies);
           for (const copy of copies) if (copy.url) showPage(copy);
           break;
@@ -920,6 +1067,7 @@ async function command(raw: unknown) {
         throw new Error("Unsupported page address.");
       workspace.selectedTaskId = original.taskId;
       const copy = newPage(original.taskId, original.url);
+      if (original.search) { copy.search = structuredClone(original.search); copy.title = original.title; searches.ensure(copy); }
       if (copy.url) showPage(copy);
       break;
     }
@@ -934,9 +1082,10 @@ async function command(raw: unknown) {
       break;
     }
     case "navigate": {
-      const url = addressURL(text(value.address, 8192), preferences.value.searchEngine);
+      if (searches.fromAddress(value.address, preferences.value)) break;
+      const url = externalShortcut(value.address) ?? addressURL(text(value.address, 8192), preferences.value.searchEngine);
       if (!selectedTask()) throw new Error("Create a task first.");
-      const page = selectedPage() ?? newPage(selectedTask()!.id);
+      const page = !selectedPage() || selectedPage()?.search ? newPage(selectedTask()!.id) : selectedPage()!;
       stopFollowingSearch(views.get(page.id)?.webContents);
       startingSearches.delete(page);
       page.url = url;
@@ -951,7 +1100,8 @@ async function command(raw: unknown) {
     }
     case "back":
       stopFollowingSearch(currentContents());
-      currentContents()?.navigationHistory.goBack();
+      if (currentContents()?.navigationHistory.canGoBack()) currentContents()!.navigationHistory.goBack();
+      else if (selectedPage()?.sourceSearchId) await searches.command({ type: "returnToSearch", id: selectedPage()!.sourceSearchId! }, preferences.value);
       break;
     case "forward":
       stopFollowingSearch(currentContents());
@@ -959,6 +1109,7 @@ async function command(raw: unknown) {
       break;
     case "reload": {
       const page = targetPage(value.id);
+      if (page?.search) { metasearch.invalidate(page.search.query); searches.refresh(page, preferences.value); break; }
       const contents = page && views.get(page.id)?.webContents;
       if (
         contents &&
@@ -989,6 +1140,7 @@ async function command(raw: unknown) {
       currentContents()?.stopFindInPage("clearSelection");
       break;
     case "stop":
+      if (selectedPage()?.search) searches.stop(selectedPage()!.id);
       stopFollowingSearch(currentContents());
       currentContents()?.stop();
       break;
@@ -1018,6 +1170,8 @@ async function command(raw: unknown) {
     taskContexts.stop();
     recordActivity();
   }
+  searches.prune();
+  const activeSearch = selectedPage(); if (!overviewOpen && activeSearch?.search) searches.ensure(activeSearch);
   storage.save(workspace);
   layout();
   publish();
@@ -1031,6 +1185,21 @@ function trusted(event: IpcMainEvent | IpcMainInvokeEvent) {
   )
     throw new Error("Untrusted request.");
 }
+let systemReady = false;
+let pendingSystemURLs = process.argv.filter(isWebURL).slice(0, 20);
+function openSystemURLs(arguments_: string[]) {
+  const urls = arguments_.filter(value => value.length <= 32768 && isWebURL(value)).slice(0, 20);
+  if (!systemReady) { pendingSystemURLs.push(...urls); pendingSystemURLs = pendingSystemURLs.slice(0, 20); return; }
+  if (!urls.length) return;
+  if (views.size + restoration.size + urls.length > 100 || workspace.tasks.length >= 10000) {
+    notice = "Close a few pages before opening links from another application."; publish(); return;
+  }
+  if (overviewOpen || !selectedTask() || selectedTask()?.lifecycle === "Settled")
+    workspaceModel.command({type:"createTask", title:"Opened links"});
+  overviewOpen = false;
+  for (const url of urls) showPage(newPage(selectedTask()!.id, url));
+  storage.save(workspace); layout(); publish();
+}
 async function start() {
   if (!app.requestSingleInstanceLock()) {
     app.quit();
@@ -1038,7 +1207,8 @@ async function start() {
   }
   Object.assign(workspace, storage.read());
   preferences.read();
-  app.on("second-instance", () => {
+  app.on("second-instance", (_event, argv) => {
+    openSystemURLs(argv);
     if (window) {
       if (window.isMinimized()) window.restore();
       window.show();
@@ -1046,45 +1216,53 @@ async function start() {
     }
   });
   await app.whenReady();
-  guests = session.fromPartition(WEBSITE_PARTITION);
+  const encryptionAvailable = safeStorage.isEncryptionAvailable() &&
+    (process.platform !== "linux" || !["basic_text", "unknown"].includes(safeStorage.getSelectedStorageBackend()));
+  const cookieMarker = join(app.getPath("userData"), "encrypted-cookies-v1");
+  if (app.isPackaged) {
+    cookieSecurity = encryptionAvailable
+      ? { cookieStorage: "encrypted", detail: "Website cookies are encrypted using your operating system keyring." }
+      : { cookieStorage: "session", detail: "The operating system keyring is unavailable. Website data stays in memory and sign-ins end when Tern closes. Tasks and notes are still saved." };
+  } else if (existsSync(cookieMarker)) {
+    cookieSecurity = { cookieStorage: "session", detail: "This profile uses encrypted cookies. Development builds use temporary website storage to protect it." };
+  }
+  updater = new ReleaseUpdater(app.getPath("exe"), app.getVersion(), process.resourcesPath, publish);
+  if (app.isPackaged) await updater.initialize();
+  guests = session.fromPartition(cookieSecurity.cookieStorage === "session" ? "tern-web-temporary" : WEBSITE_PARTITION);
+  cookieStore = new CookieStore(guests);
   extensions = new ExtensionLibrary(guests, app.getPath("userData"));
-  guests.setPermissionRequestHandler(
-    (contents, permission, callback, details) => {
-      if (
-        permission === "clipboard-sanitized-write" ||
-        extensionBrowser?.allowsClipboard(
-          contents,
-          permission,
-          details.requestingUrl || contents.getURL(),
-        )
-      ) {
-        callback(true);
-        return;
-      }
-      callback(false);
-      let origin = "This website";
-      try {
-        origin = new URL(contents.getURL()).origin;
-      } catch {}
-      notice = `${origin} requested ${permission}. This website permission is disabled in this build.`;
-      publish();
-    },
-  );
-  guests.setPermissionCheckHandler(
-    (contents, permission, origin) =>
-      permission === "clipboard-sanitized-write" ||
-      (extensionBrowser?.allowsClipboard(contents, permission, origin) ?? false),
-  );
+  permissionController = installWebsitePermissions(guests, {
+    policyPath: join(app.getPath("userData"), "site-permissions.json"),
+    changed: publish,
+    current: currentContents,
+    active: contents => contents === currentContents() && pageBounds.visible && window.isFocused(),
+    // Native file choosers temporarily take focus from their owning window.
+    fileActive: contents => contents === currentContents() && pageBounds.visible,
+    prompt: (message, detail) => dialog.showMessageBoxSync(window, {
+      type: "question", message, detail,
+      buttons: ["Deny", "Allow once"], defaultId: 0, cancelId: 0,
+      noLink: true,
+    }) === 1,
+    notice: message => { notice = message; publish(); },
+    extensionClipboard: (contents, permission, origin) =>
+      extensionBrowser?.allowsClipboard(contents, permission, origin) ?? false,
+  });
   guests.on("will-download", (_event, item) => {
-    const download = {
+    const download: Snapshot["downloads"][number] = {
       id: randomUUID(),
       name: item.getFilename(),
       status: "Choose a destination",
     };
+    downloadItems.set(download.id, item);
     downloads.unshift(download);
     downloads.splice(20);
+    for (const id of downloadItems.keys()) if (!downloads.some(download => download.id === id)) downloadItems.delete(id);
     publish();
     item.on("updated", (_event, state) => {
+      download.canCancel = item.getState() === "progressing";
+      download.canResume = item.canResume();
+      download.receivedBytes = item.getReceivedBytes();
+      download.totalBytes = item.getTotalBytes();
       download.status =
         state === "interrupted"
           ? "Interrupted"
@@ -1093,6 +1271,9 @@ async function start() {
     });
     item.on("done", (_event, state) => {
       downloadDestinations.delete(item.getSavePath());
+      download.canCancel = false;
+      download.canResume = item.canResume();
+      download.saved = state === "completed";
       download.status =
         state === "completed"
           ? "Completed"
@@ -1125,7 +1306,14 @@ async function start() {
       item.setSavePath(destination);
     } else item.cancel();
   });
+  if (cookieSecurity.cookieStorage === "encrypted" && !existsSync(cookieMarker)) {
+    await cookieStore.encryptExistingCookies();
+    await writeFile(cookieMarker, "1\n", { mode: 0o600 });
+  }
   const shellSession = session.fromPartition("tern-shell");
+  shellSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  shellSession.setPermissionCheckHandler(() => false);
+  shellSession.setDevicePermissionHandler(() => false);
   const uiRoot = resolve(directory, "../ui");
   shellSession.protocol.handle("tern", (request) => {
     const url = new URL(request.url);
@@ -1176,6 +1364,15 @@ async function start() {
   ipcMain.handle("workspace:command", (event, value) => {
     trusted(event);
     return command(value);
+  });
+  ipcMain.handle("browser:cookies", (event, value) => {
+    trusted(event);
+    return cookieStore.request(value);
+  });
+  app.on("will-quit", () => { metasearch.clear(); cookieStore.close(); });
+  ipcMain.on("guest:gesture", event => {
+    if (event.sender === currentContents() && event.senderFrame === event.sender.mainFrame && pageBounds.visible)
+      recentGestures.set(event.sender, Date.now());
   });
   ipcMain.on("guest:scroll", (event, direction) => {
     if (direction !== "up" && direction !== "down") return;
@@ -1318,6 +1515,12 @@ async function start() {
     notice = String(error);
   }
   await window.loadURL("tern://app/index.html");
+  systemReady = true;
+  openSystemURLs(pendingSystemURLs); pendingSystemURLs = [];
+  if (app.isPackaged && updater.state.configured) {
+    const timer = setTimeout(() => void updater.check(), 10000); timer.unref();
+    const recurring = setInterval(() => void updater.check(), 4 * 60 * 60 * 1000); recurring.unref();
+  }
   void taskSummaries.refresh(
     workspace,
     preferences.value.summaryModel,

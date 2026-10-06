@@ -108,6 +108,13 @@ try {
   if (rollback) {
     const previous = await installedTarget("previous");
     if (!current || !previous) throw new Error("No previous installation is available.");
+    const securityAt = async target => {
+      try { return JSON.parse(await readFile(join(root, target, "resources/security.json"), "utf8")); }
+      catch (error) { if (error.code === "ENOENT") return {}; throw error; }
+    };
+    const currentSecurity = await securityAt(current), previousSecurity = await securityAt(previous);
+    if (currentSecurity.cookieEncryption && !previousSecurity.cookieEncryption)
+      throw new Error("Rollback to a build without cookie encryption is blocked. Use a separate profile for older builds.");
     await replaceLink("current", previous);
     await replaceLink("previous", current);
     console.log(`Restored ${previous}. Quit and reopen Tern to use it.`);
@@ -121,6 +128,15 @@ try {
     source = await realpath(source);
     if (source === root || source.startsWith(`${root}/`))
       throw new Error("Package source must be outside the installation directory.");
+    if (current) {
+      const securityAt = async path => {
+        try { return JSON.parse(await readFile(join(path, "resources/security.json"), "utf8")); }
+        catch (error) { if (error.code === "ENOENT") return {}; throw error; }
+      };
+      const existing = await securityAt(join(root, current)), candidate = await securityAt(source);
+      if (existing.cookieEncryption && !candidate.cookieEncryption)
+        throw new Error("Installing a build without cookie encryption is blocked. Use a separate profile for older builds.");
+    }
     await access(join(source, "Tern"), constants.X_OK);
     await access(join(source, "resources", "tern-icon.png"), constants.R_OK);
     const archive = join(source, "resources", "app.asar");
@@ -150,7 +166,7 @@ try {
       await rename(iconTemp, iconPath);
     } finally { await rm(iconTemp, { force: true }); }
     const icon = iconPath.replaceAll("\\", "\\\\");
-    await managedFile(entry, `[Desktop Entry]\n${marker}\nType=Application\nName=Tern\nComment=Put tasks aside and resume their pages\nExec=${execQuote(launcher)}\nIcon=${icon}\nTerminal=false\nCategories=Network;WebBrowser;\nStartupWMClass=Tern\n`, 0o644);
+    await managedFile(entry, `[Desktop Entry]\n${marker}\nType=Application\nName=Tern\nComment=Put tasks aside and resume their pages\nExec=${execQuote(launcher)} %U\nIcon=${icon}\nTerminal=false\nCategories=Network;WebBrowser;\nMimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;\nStartupWMClass=Tern\n`, 0o644);
     if (current) await replaceLink("previous", current);
     await replaceLink("current", `releases/${id}`);
     await redirectLegacyInstallation();

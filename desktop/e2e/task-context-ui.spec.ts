@@ -33,7 +33,7 @@ async function close() {
 }
 test.beforeEach(async () => {
   profile = await mkdtemp(join(tmpdir(), "tern-context-ui-"));
-  await writeFile(join(profile, "preferences.json"), JSON.stringify({ summaryModel: "", searchEngine: "brave" }));
+  await writeFile(join(profile, "preferences.json"), JSON.stringify({ summaryModel: "", searchEngine: "brave", searchView: "external" }));
   await writeFile(join(profile, "workspace.json"), JSON.stringify({ version: 1, selectedTaskId: "laptop", tasks: [
     { id: "laptop", title: "Choose a laptop", note: "Check Linux suspend", lifecycle: "Active", selectedPageId: "review" },
     { id: "other", title: "Other work", note: "", lifecycle: "Active", selectedPageId: null },

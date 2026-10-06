@@ -80,6 +80,9 @@ test("task feedback stays usable with keyboard, rapid toggles and reduced motion
       const titleBounds = await selected.locator(".task-title").boundingBox();
       const actionBounds = await selected.locator(".task-actions").boundingBox();
       expect(actionBounds!.y).toBeGreaterThanOrEqual(titleBounds!.y + titleBounds!.height - 1);
+      // Labeled actions must wrap inside the narrow sidebar, not scroll sideways.
+      const navigation = shell.getByRole("navigation", { name: "Tasks", exact: true });
+      expect(await navigation.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       await capture("09-desktop-narrow");
       expect(errors).toEqual([]);
     }

@@ -1,0 +1,71 @@
+# Linux release process
+
+Release artifacts and the update feed use [somethingsomethinglabs/tern](https://github.com/somethingsomethinglabs/tern). The owner approved public visibility, and the repository is now public. The initial release remains a draft until final validation and publication. Anonymous downloads and the update feed become available after publishing the stable GitHub release. A secret scan of repository history and the proposed release changes found no leaks.
+
+The owner selected GPL-3.0-only for the desktop application and shared browser source. Their license files ship with the corresponding source. Fonts and other dependencies keep their original notices.
+
+## Build and validate
+
+Use a checkout of the release commit for published releases. The release source includes the existing browser work and the security changes; website experiments and research drafts are outside the Linux release source.
+
+```bash
+npm ci
+npm audit --audit-level=moderate
+npm run build:desktop
+npm run test:core
+npm run test:unit
+npm test --workspace=@tern/desktop -- e2e/browser.spec.ts e2e/extension-windows.spec.ts e2e/file-saving.spec.ts
+node desktop/scripts/package.mjs
+npm run test:package:desktop
+```
+
+Native tests need a graphical session; CI uses Xvfb. The file-saving test also needs xdotool. To validate native AI in the actual hardened binary, supply a previously downloaded model matching the pinned built-in checksum:
+
+```bash
+TERN_AI_BUILTIN_MODEL=/absolute/path/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf npm run test:package:desktop
+```
+
+To check encrypted-cookie migration separately from the no-keyring fallback, install `gnome-keyring`, `libsecret` tools and `dbus`, then run:
+
+```bash
+bash desktop/scripts/check-cookie-encryption.sh
+```
+
+It uses a private D-Bus session and temporary keyring. It never opens or changes the normal desktop keyring.
+
+The GitHub Actions `Linux release candidate` workflow runs these checks and uploads signed candidate artifacts. It does not publish a GitHub Release. The `TERN_RELEASE_SIGNING_KEY_PEM` repository secret is configured and matches the public key in `desktop/resources/update-config.json`. Native AI verification remains a local release check because CI has no pinned model fixture.
+
+## Publisher key and signing
+
+The private publisher key is stored locally at `.tools/release-signing/private.pem`, outside version control, with owner-only permissions. Back it up securely before distributing this first release. Losing it requires an explicit trusted-key migration. Do not include it in an archive, issue, log or source commit. Only the public key ships in the application.
+
+```bash
+TERN_RELEASE_SIGNING_KEY=.tools/release-signing/private.pem node desktop/scripts/sign-release.mjs \
+  desktop/release/Tern-linux-x64 \
+  https://github.com/somethingsomethinglabs/tern/releases/download/linux-v0.1.1/tern-linux-x64.tar.gz \
+  1
+```
+
+Upload `Tern-linux-x64.tar.gz` as `tern-linux-x64.tar.gz`, and `Tern-linux-x64.manifest.json` as `tern-linux-x64.manifest.json`, to the `linux-v0.1.1` release. Keep the manifest asset name stable: installed applications read `/releases/latest/download/tern-linux-x64.manifest.json`. Every application release needs a larger sequence and version. The signer rejects keys that do not match the packaged trust root, binaries with incorrect security fuses and dirty builds. `resources/build.json` records the source commit, application version and Electron version. Source cleanliness covers the desktop/shared-browser inputs; generated QA screenshots do not invalidate it.
+
+Manifests expire after fourteen days. Refresh and re-sign the current manifest before expiry, keeping its version, archive and sequence unchanged, or publish a newer version. If metadata expires, the client rejects it and explains the failure; it does not install an unverifiable update. GitHub's “latest” selection and anonymous asset access must be verified after publishing.
+
+## User installation
+
+Extract the publisher's archive, then run `./install.sh`. It installs to `~/.local`, adds the app-menu entry and accepts `--prefix /absolute/directory` for an isolated installation. Node/npm and this repository are not required. Alternatively, run `./Tern` directly; portable runs do not enable managed updates. The desktop entry accepts HTTP/HTTPS links from other applications without replacing an existing page or its unsaved form. The OS can select Tern as the default browser; the installer does not change that preference automatically.
+
+Updates verify the Ed25519 signature, HTTPS transport, expiration, sequence, version, archive size and SHA-256 before extracting. They preserve the current running release and switch the launcher only after copying completes. Installation takes effect after quitting and reopening. The updater never embeds a GitHub access token. A recorded high-water mark rejects older signed sequences; interrupted installation may require a newer sequence rather than retrying an already recorded one.
+
+## Release behavior and limits
+
+Production binaries disable RunAsNode, Node options, the main-process CLI inspector and extra file-protocol privileges, and require the ASAR application. Linux does not supply Electron's platform-supported ASAR integrity verification; the signed release archive authenticates distribution, while local filesystem permissions protect installed files.
+
+Cookie encryption uses the OS keyring. When Linux has no usable keyring, website sessions use memory-only storage and Settings explains that sign-ins end on exit. Tasks and notes still persist. Encryption migration rewrites existing cookies before creating website views. The isolated GNOME keyring check verifies plaintext cookie migration, encrypted database rows and persistence after restart. Other desktop/keyring combinations still need distribution testing. Install/rollback commands block downgrades to unencrypted builds sharing that profile.
+
+Supported flows include native uploads and downloads, website file-saving consent, camera/microphone consent, per-origin blocking and revocation, notification/clipboard/location consent, print, page save and PDF export. Approvals expire on navigation; blocks persist. File chooser consent accepts the selected visible page while its native chooser takes focus. Other sensitive approvals require a focused window. The media toolbar indicator reports permission approval; it does not claim that capture is currently active. Revocation destroys and recreates the document, stopping existing capture even if the site vetoes unloading.
+
+Screen sharing, USB, HID and serial remain denied. Native extension messaging is disabled, and unpacked/ZIP/CRX extension imports are developer imports without publisher verification. This release has no built-in password manager, sync or private browsing. Location approval requires a working OS/provider service. Native notification delivery, printing, camera hardware and keyring behavior vary by desktop and need distribution testing. Android changes compile but this document covers the desktop Linux release only.
+
+The pinned native AI dependency has a checksum-guarded compatibility patch: when already inside Tern’s disposable AI utility, it loads the native binding there rather than trying a nested Node fork. An incompatible binding terminates the AI utility and reports an error; RunAsNode remains disabled. Dependency upgrades must review this patch.
+
+Electron security updates require rebuilding and publishing a signed application release. Check upstream Electron advisories before each release and ship engine fixes promptly. Dependency audit results alone cannot establish browser security.

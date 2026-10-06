@@ -27,6 +27,7 @@
 
 <section>
   <h2 id="dialog-title">Extensions</h2>
+  <p>Developer imports are not publisher-verified. Extensions can read and change websites. Native messaging is disabled.</p>
   <p>
     Download a package from a Chrome Web Store link, or import a ZIP/CRX
     supplied by its developer. Chrome's Add to Chrome button is not connected to

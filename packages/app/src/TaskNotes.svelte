@@ -129,6 +129,13 @@
         </p>
       </form>
     </TaskContextPanel>
+    {#if task.keptLinks?.length}<section class="kept-task-links" aria-label="Kept links">
+      <h3>Kept links</h3>
+      {#each task.keptLinks as link (link.url)}<div class="kept-task-link">
+        <button class="kept-task-title" onclick={() => void send({ type: "openKeptLink", taskId: task!.id, url: link.url })}>{link.title}</button>
+        <button aria-label={`Remove kept link: ${link.title}`} onclick={() => void send({ type: "removeKeptLink", taskId: task!.id, url: link.url })}><X size={14} aria-hidden="true" /></button>
+      </div>{/each}
+    </section>{/if}
     <label class="task-status">
       Move task to
       <select
@@ -151,3 +158,10 @@
     </label>
   {:else}<p>Create or select a task to keep a note with it.</p>{/if}
 </aside>
+
+<style>
+  .kept-task-links { margin: 10px 0 20px; }
+  .kept-task-links h3 { font-size: 12px; font-weight: 500; margin: 0 0 12px; }
+  .kept-task-link { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 10px; }
+  .kept-task-title { flex: 1; min-width: 0; justify-content: flex-start; text-align: left; color: var(--accent); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+</style>

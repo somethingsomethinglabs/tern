@@ -34,13 +34,16 @@ export function basicTaskPlan(request: string): TaskPlan {
 
 // Construct a complete candidate before persistence or opening any website.
 export function plannedWorkspace(workspace: import('./contracts.js').Workspace, plan: TaskPlan,
-  request: string, engine: import('./contracts.js').Preferences['searchEngine'], id: () => string, title?: string) {
+  request: string, engine: import('./contracts.js').Preferences['searchEngine'], id: () => string, title?: string, searchEndpoint?: string) {
   if (workspace.tasks.length >= 10000) throw new Error("The workspace has reached its task limit.");
   const task: import('./contracts.js').Task = {
     id: id(), title: title === undefined ? plan.title : checkedText(title, 60).trim() || plan.title, goal: plan.goal, request,
     note: "", lifecycle: "Active", selectedPageId: null,
   };
-  const pages = plan.searches.map(query => ({ id: id(), taskId: task.id, title: query, url: searchURL(query, engine) }));
+  const pages: import('./contracts.js').PageRecord[] = plan.searches.map(query => ({ id: id(), taskId: task.id, title: query,
+    url: searchEndpoint ? "" : searchURL(query, engine),
+    ...(searchEndpoint ? { search: { query, endpoint: searchEndpoint, filter: "All" as const, hiddenDomains: [], page: 1 } } : {}),
+  }));
   task.selectedPageId = pages[0]?.id ?? null;
   return { ...workspace, tasks: [...workspace.tasks, task], pages: [...workspace.pages, ...pages], selectedTaskId: task.id };
 }

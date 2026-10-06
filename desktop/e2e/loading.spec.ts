@@ -93,10 +93,11 @@ test("settling during restoration unloads the page and cancels queued tabs", asy
   await shell.getByRole("button", { name: "Resume Loading", exact: true }).click();
   await expect.poll(() => hits.includes("/selected")).toBe(true);
   await shell.getByRole("button", { name: "Settle", exact: true }).click();
+  await shell.getByRole("button", { name: "Settle anyway", exact: true }).click();
   await expect(shell.getByRole("heading", { name: "Reopen this reference" })).toBeVisible();
   releaseDocument();
   // Reopen one reference after settlement. Its load would release any stale queue.
-  await shell.getByRole("button", { name: "Settled tasks", exact: true }).click();
+  await expect(shell.getByRole("button", { name: "Settled tasks", exact: true })).toHaveAttribute("aria-expanded", "true");
   await shell.getByRole("button", { name: "Select page background-2", exact: true }).click();
   await shell.getByRole("button", { name: "Reopen page", exact: true }).click();
   await expect.poll(() => app.context().pages().some(page => page.url() === origin + "/background-2")).toBe(true);

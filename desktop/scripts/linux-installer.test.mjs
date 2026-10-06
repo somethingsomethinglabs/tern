@@ -1,0 +1,30 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,writeFile,readFile,readlink,rm} from 'node:fs/promises';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
+import {spawnSync} from 'node:child_process';
+
+test('bundled Linux installer needs no Node and safely switches releases with quoted paths', async t => {
+  const temporary = await mkdtemp(join(tmpdir(),'tern-sh-install-'));
+  t.after(() => rm(temporary,{recursive:true,force:true}));
+  const source = join(temporary,'release'); await mkdir(join(source,'resources'),{recursive:true});
+  const script = (await readFile(new URL('../resources/install-linux.sh',import.meta.url),'utf8')).replaceAll('@VERSION@','0.1.1');
+  await writeFile(join(source,'install.sh'),script);
+  await writeFile(join(source,'Tern'),'#!/usr/bin/env bash\nprintf "%s\\n" "$PWD" "$@"\n',{mode:0o755});
+  for (const name of ['app.asar','tern-icon.png','security.json']) await writeFile(join(source,'resources',name),'fixture');
+  const prefix = join(temporary,"user's prefix $ with % spaces");
+  const run = () => spawnSync('bash',[join(source,'install.sh'),'--prefix',prefix],{encoding:'utf8'});
+  let result = run(); assert.equal(result.status,0,result.stderr);
+  const root = join(prefix,'share/tern'); const first = await readlink(join(root,'current'));
+  const launched = spawnSync(join(prefix,'bin/tern'),['https://example.com/a?x=1'],{encoding:'utf8'});
+  assert.equal(launched.stdout,join(root,first)+'\nhttps://example.com/a?x=1\n');
+  const validated = spawnSync('desktop-file-validate',[join(prefix,'share/applications/tern.desktop')],{encoding:'utf8'});
+  assert.equal(validated.status,0,validated.stdout+validated.stderr);
+  result = run(); assert.equal(result.status,0,result.stderr);
+  assert.notEqual(await readlink(join(root,'current')),first);
+  assert.equal(await readlink(join(root,'previous')),first);
+  await writeFile(join(prefix,'bin/tern'),'unmanaged');
+  assert.notEqual(run().status,0);
+  assert.equal(await readFile(join(prefix,'bin/tern'),'utf8'),'unmanaged');
+});

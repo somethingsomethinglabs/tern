@@ -1,4 +1,5 @@
 import type { Workspace } from "./contracts.js";
+import { isWebURL } from "./navigation.js";
 
 export function emptyWorkspace(): Workspace {
   return { version: 1, tasks: [], pages: [], selectedTaskId: null };
@@ -26,6 +27,7 @@ export function parseWorkspace(source: string): Workspace {
         string(task.note, 500) &&
         (task.goal === undefined || string(task.goal, 500)) &&
         (task.request === undefined || string(task.request, 1000)) &&
+        (task.keptLinks === undefined || (Array.isArray(task.keptLinks) && task.keptLinks.length <= 100 && task.keptLinks.every(link => link && string(link.title, 1000) && string(link.url, 32768) && isWebURL(link.url)))) &&
         (task.findings === undefined || (
           Array.isArray(task.findings) && task.findings.length <= 50 &&
           new Set(task.findings.map((finding) => finding?.id)).size === task.findings.length &&
@@ -55,6 +57,17 @@ export function parseWorkspace(source: string): Workspace {
         )
       )
         return false;
+      if (page.search !== undefined) {
+        const search = page.search;
+        if (search && ["Projects", "Discussions"].includes(String(search.filter))) search.filter = "All";
+        if (page.url !== "" || !search || !string(search.query, 8192) || !search.query.trim() ||
+            !string(search.endpoint, 2048) || !isWebURL(search.endpoint) ||
+            !["All", "Docs", "Articles", "Applications", "Videos"].includes(search.filter) ||
+            !Number.isInteger(search.page) || search.page < 1 || search.page > 100 ||
+            !Array.isArray(search.hiddenDomains) || search.hiddenDomains.length > 100 ||
+            !search.hiddenDomains.every(domain => string(domain, 253) && /^[a-z\d.-]+$/i.test(domain))) return false;
+      }
+      if (page.sourceSearchId !== undefined && !string(page.sourceSearchId, 100)) return false;
       if (!page.url) return true;
       const url = new URL(page.url);
       return (
@@ -94,6 +107,8 @@ export function parseWorkspace(source: string): Workspace {
       )
     )
       task.selectedPageId = null;
+  for (const page of value.pages)
+    if (page.sourceSearchId && !value.pages.some((source: Workspace["pages"][number]) => source.id === page.sourceSearchId && source.taskId === page.taskId && source.search)) delete page.sourceSearchId;
   if (
     !value.tasks.some(
       (task: Workspace["tasks"][number]) =>

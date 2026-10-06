@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { resolve, join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { mkdir } from "node:fs/promises";
 
 let app: ElectronApplication;
 let shell: Page;
@@ -49,6 +50,37 @@ test.afterEach(async () => {
 async function ready() {
   await shell.evaluate(() => (window as any).testUI.publish());
 }
+
+test("search return and task actions fit without wrapping", async () => {
+  await shell.evaluate(() => {
+    const ui = (window as any).testUI;
+    ui.publish({
+      preferences: { ...ui.state.preferences, autoHideToolbar: false },
+      pages: [
+        { ...ui.state.pages[0], sourceSearchId: "search-a" },
+        { ...ui.state.pages[0], id: "search-a", search: { query: "Squarespace", status: "ready", results: [] } },
+      ],
+    });
+  });
+  for (const width of [1440, 1024]) {
+    await shell.setViewportSize({ width, height: 900 });
+    const back = shell.getByRole("button", { name: "Return to results", exact: true });
+    await expect(back).toBeVisible();
+    expect(await back.evaluate(element => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return range.getBoundingClientRect().height;
+    })).toBeLessThan(25);
+    const boxes = await shell.locator(".task-actions button").evaluateAll(elements => elements.map(element => {
+      const { y, width, right } = element.getBoundingClientRect();
+      return { y, width, right };
+    }));
+    expect(new Set(boxes.map(box => box.y)).size).toBe(1);
+    expect(Math.max(...boxes.map(box => box.width)) - Math.min(...boxes.map(box => box.width))).toBeLessThan(1);
+    const group = await shell.locator(".task-actions").boundingBox();
+    expect(boxes.at(-1)!.right).toBeLessThanOrEqual(group!.x + group!.width);
+  }
+});
 
 test("late initial state cannot overwrite an event and subscriptions are disposed on remount", async () => {
   await shell.evaluate(() => {
@@ -146,6 +178,10 @@ for (const field of ["Next step", "Goal"] as const) {
 
 test("an older settings failure cannot erase a newer identical choice", async () => {
   await ready();
+  await shell.evaluate(() => {
+    const ui = (window as any).testUI;
+    ui.publish({ preferences: { ...ui.state.preferences, searchView: "external" } });
+  });
   await shell.getByRole("button", { name: "Settings", exact: true }).click();
   await shell.evaluate(() => (window as any).testUI.defer());
   const engine = shell.getByLabel("Default search engine");
@@ -303,6 +339,7 @@ test("a rejected command appears in the UI and keeps the address draft", async (
 
 test("IME confirmation does not submit a task and ordinary Enter submits once", async () => {
   await ready();
+  await shell.getByRole("button", { name: "New task", exact: true }).click();
   const input = shell.getByRole("textbox", { name: "New task", exact: true });
   await input.fill("旅行");
   const prevented = await input.evaluate((element) => {
@@ -323,4 +360,84 @@ test("IME confirmation does not submit a task and ordinary Enter submits once", 
   await expect
     .poll(() => shell.evaluate(() => (window as any).testUI.commands))
     .toEqual([{ type: "createTask", title: "旅行" }]);
+});
+
+test("Later starts closed and all settled tasks are shown, including newly settled work", async () => {
+  await ready();
+  await shell.evaluate(() => {
+    const ui = (window as any).testUI;
+    ui.publish({ tasks: [
+      ...ui.state.tasks,
+      { id: "later", title: "Read later", lifecycle: "Later", note: "", selectedPageId: null },
+      ...Array.from({ length: 14 }, (_, index) => ({ id: `done-${index}`, title: `Finished ${index}`, lifecycle: "Settled", note: "", selectedPageId: null })),
+    ] });
+  });
+  const later = shell.getByRole("button", { name: "Later tasks", exact: true });
+  const settled = shell.getByRole("button", { name: "Settled tasks", exact: true });
+  await expect(later).toHaveAttribute("aria-expanded", "false");
+  await expect(shell.getByRole("button", { name: "Select task Read later", exact: true })).toBeHidden();
+  await expect(settled).toHaveAttribute("aria-expanded", "true");
+  await expect(shell.getByRole("region", { name: "Settled tasks", exact: true }).getByRole("button", { name: /^Select task/ })).toHaveCount(14);
+  await expect(shell.getByRole("button", { name: "Select task Finished 13", exact: true })).toBeVisible();
+  await settled.click();
+  await shell.evaluate(() => {
+    const ui = (window as any).testUI;
+    ui.publish({ tasks: ui.state.tasks.map((task: any) => task.id === "b" ? { ...task, lifecycle: "Settled" } : task) });
+  });
+  await expect(settled).toHaveAttribute("aria-expanded", "true");
+  await expect(shell.getByRole("region", { name: "Settled tasks", exact: true }).getByRole("button", { name: "Select task Beta", exact: true })).toBeVisible();
+  await shell.getByLabel("Search tasks and pages").fill("Read later");
+  await expect(later).toHaveAttribute("aria-expanded", "true");
+  await expect(shell.getByRole("button", { name: "Select task Read later", exact: true })).toBeVisible();
+  await shell.getByRole("button", { name: "Clear search", exact: true }).click();
+  await expect(later).toHaveAttribute("aria-expanded", "false");
+});
+
+test("shortcut hints work on hover, click and keyboard without covering a native page", async () => {
+  await ready();
+  await shell.evaluate(() => {
+    const ui = (window as any).testUI;
+    ui.publish({ pages: [{ ...ui.state.pages[0], live: true }] });
+  });
+  const visiblePage = () => shell.evaluate(() => (window as any).testUI.layouts.at(-1).visible);
+  const button = shell.getByRole("button", { name: "Keyboard shortcuts", exact: true });
+  const hints = shell.getByRole("region", { name: "Keyboard shortcut hints", exact: true });
+  await expect.poll(visiblePage).toBe(true);
+  await button.hover();
+  await expect(hints).toBeVisible();
+  await expect.poll(visiblePage).toBe(false);
+  await shell.getByLabel("Search tasks and pages").hover();
+  await expect(hints).toBeHidden();
+  await expect.poll(visiblePage).toBe(true);
+  await button.click();
+  await shell.getByLabel("Search tasks and pages").hover();
+  await expect(hints).toBeVisible();
+  await shell.screenshot({ path: "../design/qa/sidebar-review/05-shortcut-help.png" });
+  await button.press("Escape");
+  await expect(hints).toBeHidden();
+  await expect(button).toBeFocused();
+  await expect.poll(visiblePage).toBe(true);
+  await button.press("Enter");
+  await expect(hints).toBeVisible();
+  await shell.getByLabel("Search tasks and pages").click();
+  await expect(hints).toBeHidden();
+  await expect.poll(visiblePage).toBe(true);
+});
+
+test("Android settings retain engine selection and omit desktop metasearch controls", async () => {
+  await ready();
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(390, 844));
+  await shell.evaluate(() => {
+    const ui = (window as any).testUI;
+    ui.publish({ capabilities: { mobile: true, extensions: false, snapshots: false }, preferences: { ...ui.state.preferences, searchView: "external", searchEngine: "duckduckgo" } });
+  });
+  await shell.getByRole("button", { name: "Tasks and tabs", exact: true }).click();
+  await shell.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(shell.getByLabel("Default search engine")).toHaveValue("duckduckgo");
+  await expect(shell.getByLabel("Search view")).toHaveCount(0);
+  await expect(shell.getByRole("group", { name: "Search providers" })).toHaveCount(0);
+  await shell.getByLabel("Default search engine").selectOption("brave");
+  await expect(shell.getByLabel("Default search engine")).toHaveValue("brave");
+  await mkdir(resolve("../design/qa/search"), { recursive: true });
+  await shell.screenshot({ path: resolve("../design/qa/search/android-search-settings.png") });
 });
