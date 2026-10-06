@@ -58,6 +58,8 @@ Manifests expire after fourteen days. Refresh and re-sign the current manifest b
 
 ## In-app updates
 
+[Linux 0.1.2](https://github.com/somethingsomethinglabs/tern/releases/tag/linux-v0.1.2) is published from clean commit `e9a18cc701c27d03dc08b9c9b5fdcf011412fe7c`. [Release CI](https://github.com/somethingsomethinglabs/tern/actions/runs/37413568351) passed. The public signed updater installed it on the development machine, verified its archive and switched the launcher to `0.1.2-signed-2`. A subsequent check accepted the public feed and reported up to date.
+
 Starting with 0.1.2, the main browser window prompts when a signed update is available. Choose **Update now** to download, verify and install it without leaving the application. Progress appears during download, and failures leave the current release active with a retry option. **Later** hides that version's prompt for the current session; Settings retains the update controls.
 
 After installation, choose **Restart Tern** when website work is saved. The existing quit confirmation lets you cancel. Accepted restarts launch the newly installed executable. Tasks, notes and page addresses persist; unsaved website forms do not survive a restart. Startup and four-hour checks continue automatically. Portable runs still require the installer to enable managed updates.

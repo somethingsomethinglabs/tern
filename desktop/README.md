@@ -26,7 +26,7 @@ Quit and reopen Tern when ready to use the update. Updating does not close the r
 
 Each build gets a separate directory under `$XDG_DATA_HOME/tern/releases`, normally `~/.local/share/tern/releases`. The launcher switches to it only after the copy completes. Previous builds remain on disk so running copies keep their files. To switch back to the previous build, run `./update-tern --rollback`, then quit and reopen. Rollback switches application files only; it does not restore older profile data. Older releases are not automatically deleted and each currently occupies about 285 MB.
 
-The repository installer updates this machine from the local working copy. Packaged Linux releases also support publisher-signed updates in Settings after installation. See the [Linux release process](../docs/linux-release.md) for signing, hosted distribution and access requirements.
+The repository installer updates this machine from the local working copy. Installed Linux releases check for publisher-signed updates automatically. From 0.1.2, an in-app prompt offers Update now, download progress and Restart Tern, with the existing quit confirmation for unsaved website work. Settings also retains manual check/install controls. See the [Linux release process](../docs/linux-release.md) for signing, hosted distribution and access requirements.
 
 Use `./install-tern --from desktop/release/Tern-linux-x64` to install an already packaged build. `--prefix /absolute/directory` installs into an isolated directory for checks, overriding the usual executable and data locations. Installation and updates use your own account and do not require root.
 
