@@ -58,6 +58,8 @@ Manifests expire after fourteen days. Refresh and re-sign the current manifest b
 
 ## Website storage access
 
+[Linux 0.1.3](https://github.com/somethingsomethinglabs/tern/releases/tag/linux-v0.1.3) is published from clean commit `d1c8f55f4c5fe45a26fc6a60541ea94f4c49d104`. [Release CI](https://github.com/somethingsomethinglabs/tern/actions/runs/37414827875) passed, including the real-server native storage-access test. All 30 desktop unit checks passed. The public signed updater verified and installed the release on the development machine.
+
 From 0.1.3, Storage Access API requests use native consent rather than blanket denial. The prompt names the embedded origin and its hosting origin and explains access to existing cookies/sign-in data and possible cross-site tracking. Grants belong to the requesting origin in the current hosting document and expire on main-frame navigation. Requests need a secure origin and a selected, visible, focused page. Site information can block embedded sign-in/cookie access for the hosting site; revocation recreates that page to stop existing access. Unknown permissions and the separate top-level-storage-access extension remain denied.
 
 ## In-app updates
