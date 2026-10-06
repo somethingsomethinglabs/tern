@@ -2,7 +2,7 @@
 
 Reviewed 6 October 2026. Scope: the shared browser application, Electron desktop host, Linux packaging/install/update path, and Android file chooser ownership. The initial review found release blockers in engine maintenance, production fuses, cookie encryption, website permissions, native extension messaging and distribution. Those findings drove the changes below.
 
-The Linux 0.1.1 candidate is prepared in the existing [somethingsomethinglabs/tern repository](https://github.com/somethingsomethinglabs/tern) as a draft. The owner approved public repository visibility and the repository is now public. Source history and staged release changes passed secret scanning. The owner selected GPL-3.0-only for the desktop and shared browser source. Published artifacts must be rebuilt and signed from the committed release source. See [Linux release process](linux-release.md) for the concrete publication steps and supported capabilities. This is a release candidate, not a claim of full Chrome compatibility or protection against every browser exploit.
+[Linux 0.1.1](https://github.com/somethingsomethinglabs/tern/releases/tag/linux-v0.1.1) is published in the owner-approved public repository. The owner selected GPL-3.0-only for the desktop and shared browser source. Source history and release changes passed secret scanning. The binary was rebuilt from clean commit `8515d02538243b9c24f889e3e63a40ca96598862` and signed with the configured publisher key. [Release CI](https://github.com/somethingsomethinglabs/tern/actions/runs/37410603501) passed on that commit. Anonymous download integrity and the live signed update feed have been verified. See [Linux release process](linux-release.md) for installation, maintenance and supported capabilities. The release does not provide full Chrome compatibility or protection against every browser exploit.
 
 ## Implemented changes
 
@@ -38,9 +38,6 @@ The Android debug APK compiles after the chooser changes. These tests establish 
 
 Repeatable commands and publisher instructions are in [Linux release process](linux-release.md). The collaborative web preview cannot inspect native Electron WebContentsViews or OS choosers; those checks use the repository's native integration tests.
 
-## Publication gates
+## Ongoing release maintenance
 
-1. Public repository visibility is approved and configured. Publish the completed draft before advertising anonymous downloads or the public update feed.
-2. Commit the intended source, rebuild from a clean checkout, and sign that package. Verify resources/build.json against the release tag before publication.
-3. Securely back up the ignored local publisher key. The matching CI signing secret is configured. Refresh signed metadata before its fourteen-day expiry.
-4. Publish the final assets with the documented stable names and verify anonymous release/download/feed access. Continue prompt Electron security updates and distribution acceptance testing.
+Securely back up the ignored local publisher key. The matching CI signing secret is configured. Renew signed metadata before its fourteen-day expiry, currently 20 October 2026 at 03:47 UTC, or publish a newer application version. Continue prompt Electron security updates and distribution acceptance testing. New releases must preserve clean source records, source/license access and anonymous signed download verification.

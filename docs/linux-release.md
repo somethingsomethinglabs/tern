@@ -1,8 +1,14 @@
 # Linux release process
 
-Release artifacts and the update feed use [somethingsomethinglabs/tern](https://github.com/somethingsomethinglabs/tern). The owner approved public visibility, and the repository is now public. The initial release remains a draft until final validation and publication. Anonymous downloads and the update feed become available after publishing the stable GitHub release. A secret scan of repository history and the proposed release changes found no leaks.
+Release artifacts and the update feed use [somethingsomethinglabs/tern](https://github.com/somethingsomethinglabs/tern). The owner approved public visibility, and the repository is now public. The initial [Linux 0.1.1 release](https://github.com/somethingsomethinglabs/tern/releases/tag/linux-v0.1.1) is published. Anonymous archive downloads and the signed update feed have been verified. A secret scan of repository history and the proposed release changes found no leaks.
 
-The owner selected GPL-3.0-only for the desktop application and shared browser source. Their license files ship with the corresponding source. Fonts and other dependencies keep their original notices.
+The owner selected GPL-3.0-only for the desktop application and shared browser source. Their license files ship with the corresponding source. Fonts and other dependencies keep their original notices. The release also includes the source and build scripts for electron-chrome-extensions 4.9.0 at upstream release commit `927ac340c3c6cc462f636a50ccd9991df0cd2e12`.
+
+## Published release
+
+The Linux 0.1.1 binary was built from clean commit `8515d02538243b9c24f889e3e63a40ca96598862`, tagged `linux-v0.1.1`, with Electron 44.5.1. [Release CI](https://github.com/somethingsomethinglabs/tern/actions/runs/37410603501) passed on that commit. The archive SHA-256 is `b196a40493310c56fc85d980b09cddeb07607c3a6ec109cd23ee37ce572fd888`. An anonymous download matched that digest, and the application's updater accepted the live signed feed.
+
+The first manifest expires on 20 October 2026 at 03:47 UTC. Renew its signed metadata before then or publish a newer application release. Keep the original package directory when renewing the same archive, and check that the regenerated archive digest is unchanged before replacing only the manifest asset.
 
 ## Build and validate
 
