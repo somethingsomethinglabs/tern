@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 
 export const permissionLabels: Record<string, string> = {
   fileSystem: "Files and folders", media: "Camera and microphone",
+  "storage-access": "Embedded sign-in and cookies",
   geolocation: "Location", notifications: "Notifications", "clipboard-read": "Clipboard reading",
 };
 
@@ -44,11 +45,13 @@ export function installWebsitePermissions(
       }
     } catch { throw new Error("Site permissions could not be read. Repair the profile before browsing."); }
   }
+  const storageKey = (top: string, requesting: string) => `storage-access:${JSON.stringify([top, requesting])}`;
   const grants = new Map<WebContents, Set<string>>();
   const denied = new Map<WebContents, Set<string>>();
   const prompts = new Map<WebContents, number[]>();
   const files = new Map<WebContents, Set<string>>();
   const observed = new WeakSet<WebContents>();
+  const documentVersions = new WeakMap<WebContents, number>();
   const fileKey = (origin: string, details: Electron.FilesystemPermissionRequest | Electron.PermissionCheckHandlerHandlerDetails) =>
     JSON.stringify([origin, details.filePath, details.isDirectory, details.fileAccessType]);
   const grantFile = (contents: WebContents, origin: string, details: Electron.FilesystemPermissionRequest) => {
@@ -65,7 +68,7 @@ export function installWebsitePermissions(
   const observe = (contents: WebContents) => {
     if (!observed.has(contents)) {
       observed.add(contents);
-      const clear = () => { files.delete(contents); grants.delete(contents); denied.delete(contents); prompts.delete(contents); options.changed?.(); };
+      const clear = () => { documentVersions.set(contents, (documentVersions.get(contents) ?? 0) + 1); files.delete(contents); grants.delete(contents); denied.delete(contents); prompts.delete(contents); options.changed?.(); };
       contents.on("did-start-navigation", (_event, _url, inPlace, mainFrame) => {
         if (mainFrame && !inPlace) clear();
       });
@@ -78,7 +81,9 @@ export function installWebsitePermissions(
     const recent = (prompts.get(contents) ?? []).filter(time => Date.now() - time < 60000);
     if (recent.length >= 8) { options.notice("Too many permission requests. Reload the page to try again."); return false; }
     recent.push(Date.now()); prompts.set(contents, recent);
-    const allowed = options.prompt(`${origin} requests permission`, detail);
+    const documentVersion = documentVersions.get(contents);
+    const approved = options.prompt(`${origin} requests permission`, detail);
+    const allowed = approved && !contents.isDestroyed() && documentVersions.get(contents) === documentVersion;
     const target = allowed ? grants : denied;
     if (!target.has(contents)) target.set(contents, new Set());
     target.get(contents)!.add(key);
@@ -95,6 +100,12 @@ export function installWebsitePermissions(
         options.extensionClipboard(contents, permission, origin)) return true;
     const requestingOrigin = originOf(origin);
     if (blocked.get(requestingOrigin)?.has(permission)) return false;
+    if (permission === "storage-access") {
+      if (!contents || contents.isDestroyed() || !requestingOrigin) return false;
+      const top = originOf(contents.getURL());
+      if (!top || blocked.get(top)?.has(permission) || (details.isMainFrame && top !== requestingOrigin)) return false;
+      return grants.get(contents)?.has(storageKey(top, requestingOrigin)) ?? false;
+    }
     if (permission !== "fileSystem") {
       if (!contents || contents.isDestroyed() || originOf(contents.getURL()) !== requestingOrigin || !details.isMainFrame) return false;
       const key = permission === "media" ? `media:${details.mediaType}` : permission;
@@ -126,10 +137,12 @@ export function installWebsitePermissions(
       return;
     }
     const origin = originOf(requesting);
+    const top = originOf(contents.getURL());
+    const storage = permission === "storage-access";
     const eligible = !contents.isDestroyed() && (permission === "fileSystem" ? (options.fileActive ?? options.active)(contents) : options.active(contents)) &&
-      !!origin && origin === originOf(contents.getURL()) &&
+      !!origin && !!top && (origin === top || (storage && !details.isMainFrame)) &&
       // Chromium reports fileSystem requests as subframes even for the main frame.
-      (details.isMainFrame || permission === "fileSystem");
+      (details.isMainFrame || permission === "fileSystem" || storage);
     let detail = "";
     switch (permission) {
       case "fileSystem": {
@@ -142,15 +155,21 @@ export function installWebsitePermissions(
           detail = `Use your ${types.map(type => type === "video" ? "camera" : "microphone").join(" and ")}.`;
         break;
       }
+      case "storage-access":
+        detail = origin === top
+          ? "Use this website's existing cookies and sign-in data on this page."
+          : `Allow ${origin}, embedded in ${top}, to use its existing cookies and sign-in data here. This can also enable tracking across websites. This approval ends when you leave or reload the hosting page.`;
+        break;
       case "geolocation": detail = "Read your current location."; break;
       case "notifications": detail = "Show desktop notifications."; break;
       case "clipboard-read": detail = "Read your clipboard, which may contain private information."; break;
     }
     const types = (details as Electron.MediaAccessPermissionRequest).mediaTypes ?? [];
-    const key = permission === "fileSystem" ? fileKey(origin, details as Electron.FilesystemPermissionRequest) : permission;
+    const key = permission === "fileSystem" ? fileKey(origin, details as Electron.FilesystemPermissionRequest) : storage ? storageKey(top, origin) : permission;
     const already = permission === "media" ? types.length > 0 && types.every(type => grants.get(contents)?.has(`media:${type}`)) : grants.get(contents)?.has(key);
-    const allowed = eligible && !!detail && !blocked.get(origin)?.has(permission) &&
+    const allowed = eligible && !!detail && !blocked.get(origin)?.has(permission) && !(storage && blocked.get(top)?.has(permission)) &&
       (!!already || decide(contents, origin, permission, key, detail));
+    if (allowed && storage) grants.get(contents)!.add("storage-access");
     if (allowed && permission === "media")
       for (const type of types) grants.get(contents)!.add(`media:${type}`);
     if (allowed && permission === "fileSystem")

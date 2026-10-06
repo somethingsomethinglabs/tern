@@ -56,6 +56,10 @@ Upload `Tern-linux-x64.tar.gz` as `tern-linux-x64.tar.gz`, and `Tern-linux-x64.m
 
 Manifests expire after fourteen days. Refresh and re-sign the current manifest before expiry, keeping its version, archive and sequence unchanged, or publish a newer version. If metadata expires, the client rejects it and explains the failure; it does not install an unverifiable update. GitHub's “latest” selection and anonymous asset access must be verified after publishing.
 
+## Website storage access
+
+From 0.1.3, Storage Access API requests use native consent rather than blanket denial. The prompt names the embedded origin and its hosting origin and explains access to existing cookies/sign-in data and possible cross-site tracking. Grants belong to the requesting origin in the current hosting document and expire on main-frame navigation. Requests need a secure origin and a selected, visible, focused page. Site information can block embedded sign-in/cookie access for the hosting site; revocation recreates that page to stop existing access. Unknown permissions and the separate top-level-storage-access extension remain denied.
+
 ## In-app updates
 
 [Linux 0.1.2](https://github.com/somethingsomethinglabs/tern/releases/tag/linux-v0.1.2) is published from clean commit `e9a18cc701c27d03dc08b9c9b5fdcf011412fe7c`. [Release CI](https://github.com/somethingsomethinglabs/tern/actions/runs/37413568351) passed. The public signed updater installed it on the development machine, verified its archive and switched the launcher to `0.1.2-signed-2`. A subsequent check accepted the public feed and reported up to date.

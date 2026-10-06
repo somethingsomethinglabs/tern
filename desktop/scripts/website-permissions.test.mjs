@@ -130,3 +130,46 @@ test('media approval covers only the requested device types', () => {
   f.configure({approve:false});
   assert.equal(f.request('media',{mediaTypes:['audio']}),false);
 });
+
+test('storage access supports Google with explicit consent scoped to the hosting page', () => {
+  const f = fixture(); f.configure({approve:true,url:'https://www.google.com/'});
+  assert.equal(f.request('storage-access'),true);
+  assert.equal(f.handlers.check(f.contents,'storage-access','https://www.google.com',{isMainFrame:true}),true);
+  f.handlers['did-start-navigation']({}, 'https://example.com/', false, true);
+  f.configure({url:'https://example.com/'});
+  assert.equal(f.request('storage-access',{requestingUrl:'https://www.google.com/embedded',isMainFrame:false}),true);
+  assert.match(f.prompts.at(-1)[1],/https:\/\/www.google.com/);
+  assert.match(f.prompts.at(-1)[1],/https:\/\/example.com/);
+  assert.equal(f.handlers.check(f.contents,'storage-access','https://www.google.com',{isMainFrame:false,embeddingOrigin:'https://example.com'}),true);
+  assert.equal(f.handlers.check(f.contents,'storage-access','https://attacker.example',{isMainFrame:false,embeddingOrigin:'https://example.com'}),false);
+  f.controller.setPolicy('https://example.com','storage-access','block');
+  assert.equal(f.handlers.check(f.contents,'storage-access','https://www.google.com',{isMainFrame:false,embeddingOrigin:'https://example.com'}),false);
+  assert.equal(f.request('storage-access',{requestingUrl:'https://www.google.com/embedded',isMainFrame:false}),false);
+});
+
+test('storage access denies inactive, insecure and unattributed requests and expires on navigation', () => {
+  const f = fixture(); f.configure({approve:true});
+  const details = {requestingUrl:'https://www.google.com/embed',isMainFrame:false};
+  f.configure({active:false}); assert.equal(f.request('storage-access',details),false);
+  f.configure({active:true});
+  assert.equal(f.request('storage-access',{...details,requestingUrl:'http://insecure.example/embed'}),false);
+  assert.equal(f.request('storage-access',{...details,isMainFrame:true}),false);
+  assert.equal(f.prompts.length,0);
+  assert.equal(f.request('storage-access',details),true);
+  assert.equal(f.handlers.check(null,'storage-access','https://www.google.com',{isMainFrame:false}),false);
+  assert.equal(f.controller.snapshot(f.contents).permissions.find(value=>value.name==='storage-access').state,'allowed');
+  f.handlers['did-start-navigation']({},'https://another.example/',false,true);
+  f.configure({url:'https://another.example/'});
+  assert.equal(f.handlers.check(f.contents,'storage-access','https://www.google.com',{isMainFrame:false}),false);
+  f.configure({approve:false}); assert.equal(f.request('storage-access',details),false);
+  const promptCount=f.prompts.length;
+  assert.equal(f.request('storage-access',details),false);assert.equal(f.prompts.length,promptCount);
+  assert.equal(f.request('top-level-storage-access'),false);
+});
+
+test('a navigation during storage consent cannot grant access to the replacement document', () => {
+  let f;
+  f = fixture({prompt: () => { f.handlers['did-start-navigation']({},'https://example.com/editor',false,true); return true; }});
+  assert.equal(f.request('storage-access',{requestingUrl:'https://www.google.com/embed',isMainFrame:false}),false);
+  assert.equal(f.handlers.check(f.contents,'storage-access','https://www.google.com',{isMainFrame:false}),false);
+});
