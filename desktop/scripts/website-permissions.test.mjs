@@ -173,3 +173,11 @@ test('a navigation during storage consent cannot grant access to the replacement
   assert.equal(f.request('storage-access',{requestingUrl:'https://www.google.com/embed',isMainFrame:false}),false);
   assert.equal(f.handlers.check(f.contents,'storage-access','https://www.google.com',{isMainFrame:false}),false);
 });
+
+test('permission subscribers immediately see an approved embedded storage grant', () => {
+  let f, state;
+  f = fixture({changed: () => { state = f.controller.snapshot(f.contents).permissions.find(value=>value.name==='storage-access').state; }});
+  f.configure({approve:true});
+  assert.equal(f.request('storage-access',{requestingUrl:'https://www.google.com/embed',isMainFrame:false}),true);
+  assert.equal(state,'allowed');
+});

@@ -169,7 +169,6 @@ export function installWebsitePermissions(
     const already = permission === "media" ? types.length > 0 && types.every(type => grants.get(contents)?.has(`media:${type}`)) : grants.get(contents)?.has(key);
     const allowed = eligible && !!detail && !blocked.get(origin)?.has(permission) && !(storage && blocked.get(top)?.has(permission)) &&
       (!!already || decide(contents, origin, permission, key, detail));
-    if (allowed && storage) grants.get(contents)!.add("storage-access");
     if (allowed && permission === "media")
       for (const type of types) grants.get(contents)!.add(`media:${type}`);
     if (allowed && permission === "fileSystem")
@@ -192,7 +191,8 @@ export function installWebsitePermissions(
         permissions: Object.entries(permissionLabels).map(([name, label]) => ({ name, label,
           state: blocked.get(origin)?.has(name) ? "blocked" as const :
             (name === "fileSystem" ? files.get(contents)?.size : name === "media" ?
-              grants.get(contents)?.has("media") : grants.get(contents)?.has(name)) ? "allowed" as const : "ask" as const,
+              grants.get(contents)?.has("media") : name === "storage-access" ?
+              [...(grants.get(contents) ?? [])].some(key => key.startsWith("storage-access:")) : grants.get(contents)?.has(name)) ? "allowed" as const : "ask" as const,
         })),
       };
     },
