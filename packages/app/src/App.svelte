@@ -35,6 +35,7 @@
   import SearchResults, { type SearchViewState } from "./SearchResults.svelte";
   import TaskNotes from "./TaskNotes.svelte";
   import TaskOverview from "./TaskOverview.svelte";
+  import ExtensionsMenu from "./ExtensionsMenu.svelte";
   import ExtensionsPanel from "./ExtensionsPanel.svelte";
   import SnapshotButton from "./SnapshotButton.svelte";
   import CookieDeleteButton from "./CookieDeleteButton.svelte";
@@ -62,7 +63,7 @@
   let query = $state.raw("");
 
   let modal = $state.raw<
-    "pause" | "rename" | "downloads" | "extensions" | "startTask" | "settle" | "site" | null
+    "pause" | "rename" | "downloads" | "extensionMenu" | "extensions" | "startTask" | "settle" | "site" | null
   >(null);
 
   let name = $state.raw("");
@@ -1102,11 +1103,11 @@
       {#if snapshot?.capabilities?.extensions !== false}<button
           aria-label="Extensions"
           title="Extensions"
-          onclick={() => (modal = "extensions")}
+          onclick={() => (modal = "extensionMenu")}
         >
           <PuzzlePiece aria-hidden="true" size={21}></PuzzlePiece>
         </button>{/if}
-      {#each snapshot?.extensions.filter((extension) => extension.canOpen) ?? [] as extension (extension.id)}<button
+      {#each snapshot?.extensions.filter((extension) => extension.canOpen && extension.pinned && extension.enabled !== false) ?? [] as extension (extension.id)}<button
           aria-label={`Open ${extension.name}`}
           title={`Open ${extension.name}`}
           onclick={() => void send({ type: "openExtension", id: extension.id })}
@@ -1263,6 +1264,8 @@
     bind:this={dialogRef}
     aria-labelledby="dialog-title"
     class="dialog"
+    class:extension-menu-dialog={modal === "extensionMenu"}
+    onclick={(event) => { if (modal === "extensionMenu" && event.target === dialogRef) modal = null; }}
     oncancel={() =>
       modal === "startTask" ? cancelTaskStart() : (modal = null)}
     onclose={() => {
@@ -1308,7 +1311,7 @@
             if (success && dialogGeneration === submittedDialog) modal = null;
           }}>Settle anyway</button>
         </footer>
-      </section>{:else}{#if modal === "site" && snapshot}<SiteInformation {snapshot} {send} close={() => (modal = null)} />{:else if modal === "extensions"}<ExtensionsPanel
+      </section>{:else}{#if modal === "site" && snapshot}<SiteInformation {snapshot} {send} close={() => (modal = null)} />{:else if modal === "extensionMenu"}<ExtensionsMenu extensions={snapshot?.extensions ?? []} {send} close={() => (modal = null)} manage={() => (modal = "extensions")} />{:else if modal === "extensions"}<ExtensionsPanel
           extensions={snapshot?.extensions ?? []}
           notice={snapshot?.notice ?? ""}
           {send}

@@ -47,7 +47,8 @@ for (const closeWith of ["windows", "tabs"] as const) {
     });
     try {
       const shell = await app.firstWindow();
-      await shell.getByRole("button", { name: "Open Passkey fixture", exact: true }).click();
+      await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+      await shell.getByRole("button", { name: "Passkey fixture Enabled", exact: true }).click();
       await expect.poll(() => app.context().pages().some(page => page.url().endsWith("/vault.html"))).toBe(true);
       const vault = app.context().pages().find(page => page.url().endsWith("/vault.html"))!;
       await vault.getByRole("button", { name: "Start passkey" }).click();

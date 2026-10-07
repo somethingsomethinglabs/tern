@@ -1471,3 +1471,29 @@ select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .site-permission small { display: block; margin-top: 4px; color: var(--accent); }
 .site-tools { display: flex; flex-wrap: wrap; gap: 8px; }
 .permission-indicator { font-size: 12px; color: #fbbf24; }
+
+/* The modal top layer keeps the menu above native website views. */
+dialog.extension-menu-dialog {
+  position: fixed;
+  inset: 54px 12px auto auto;
+  margin: 0;
+  width: min(360px, calc(100vw - 24px));
+  padding: 0;
+  max-height: calc(100vh - 70px);
+}
+dialog.extension-menu-dialog::backdrop { background: transparent; }
+.extensions-menu header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 0; }
+.extensions-menu header h2 { margin: 0; font-size: 17px; }
+.extensions-menu header button { border: 0; background: transparent; padding: 5px; }
+.extensions-menu .extensions-menu-caption { padding: 0 18px; font-size: 12px; opacity: .7; }
+.extensions-menu-list { max-height: 55vh; overflow-y: auto; padding: 0 8px 10px; }
+.extensions-menu-row { display: flex; align-items: center; gap: 6px; }
+.extensions-menu-row button { border: 0; background: transparent; }
+.extensions-menu-row .extension-launch { flex: 1; display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px; min-width: 0; }
+.extension-launch > span:last-child { min-width: 0; }
+.extension-launch strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.extension-launch small { display: block; font-size: 11px; opacity: .7; margin-top: 3px; }
+.extension-avatar { display: grid; place-items: center; flex: 0 0 30px; height: 30px; border-radius: 8px; background: var(--surface-raised, #80808020); }
+.extension-pinned { color: var(--accent); }
+.extensions-menu .extensions-manage { display: flex; align-items: center; gap: 10px; width: 100%; border: 0; border-top: 1px solid var(--border); border-radius: 0; padding: 14px 18px; background: transparent; }
+.extensions-menu-row .extension-launch { justify-content: flex-start; }

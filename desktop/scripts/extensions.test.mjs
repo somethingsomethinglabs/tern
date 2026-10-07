@@ -19,3 +19,26 @@ test('native-messaging extensions are rejected before any background worker can 
   assert.equal(loads,0);
   assert.match(library.list()[0].error,/native messaging are blocked/);
 });
+
+test('developer extensions remain disabled across restart and can be enabled again', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'tern-extension-state-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const path = join(directory, 'extension'); await mkdir(path);
+  await writeFile(join(path, 'manifest.json'), JSON.stringify({ manifest_version: 3, name: 'Fixture', version: '1' }));
+  let loads = 0;
+  const session = { extensions: {
+    loadExtension: async () => { loads++; return { id: 'a'.repeat(32), name: 'Fixture', version: '1', manifest: {} }; },
+    removeExtension: () => {},
+  } };
+  const library = new ExtensionLibrary(session, directory);
+  await library.add(path);
+  await library.setEnabled('a'.repeat(32), false);
+  const restored = new ExtensionLibrary(session, directory);
+  await restored.restore();
+  assert.equal(loads, 1);
+  assert.equal(restored.list()[0].enabled, false);
+  await restored.setEnabled('a'.repeat(32), true);
+  assert.equal(loads, 2);
+  assert.equal(restored.list().length, 1);
+  assert.equal(restored.list()[0].enabled, true);
+});
