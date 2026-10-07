@@ -117,6 +117,9 @@ export type Snapshot = Omit<Workspace, "pages"> & {
     path: string;
     error: string;
     canOpen?: boolean;
+    store?: boolean;
+    enabled?: boolean;
+    updateStatus?: string;
   }[];
   pages: PageState[];
   notice: string;
@@ -160,6 +163,8 @@ export type Command =
   | { type: "chooseDownloadDirectory" | "clearCache" | "importExtension" }
   | { type: "downloadExtension"; source: string }
   | { type: "loadExtension" }
+  | { type: "browseExtensionStore" | "checkExtensionUpdates" }
+  | { type: "setExtensionEnabled"; id: string; enabled: boolean }
   | { type: "removeExtension"; path: string }
   | { type: "openExtension"; id: string }
   | { type: "selectPage"; id: string; selection?: PageSelectionMode }

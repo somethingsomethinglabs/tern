@@ -1140,13 +1140,14 @@ test("the extensions button loads, remembers and removes an unpacked content scr
   );
   await newTask("Extension check");
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByText("Developer options", { exact: true }).click();
   await app.evaluate(({ dialog }) => {
     dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
   });
   await shell
     .getByRole("button", { name: "Load unpacked", exact: true })
     .click();
-  await expect(shell.getByText("No extensions loaded.")).toBeVisible();
+  await expect(shell.getByText("No extensions installed.")).toBeVisible();
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({
       canceled: false,
@@ -1159,7 +1160,7 @@ test("the extensions button loads, remembers and removes an unpacked content scr
   await expect(shell.getByRole("dialog").getByRole("alert")).toContainText(
     /manifest/i,
   );
-  await expect(shell.getByText("No extensions loaded.")).toBeVisible();
+  await expect(shell.getByText("No extensions installed.")).toBeVisible();
   await app.evaluate(({ dialog }, extensionPath) => {
     dialog.showOpenDialog = async () => ({
       canceled: false,
@@ -1201,8 +1202,9 @@ test("the extensions button loads, remembers and removes an unpacked content scr
     restored.getByText("Extension active", { exact: true }),
   ).toBeVisible();
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByText("Developer options", { exact: true }).click();
   await shell.getByRole("button", { name: "Remove Sample extension" }).click();
-  await expect(shell.getByText("No extensions loaded.")).toBeVisible();
+  await expect(shell.getByText("No extensions installed.")).toBeVisible();
   await shell.getByRole("button", { name: "Done", exact: true }).click();
   await app.evaluate(({ dialog }) => {
     dialog.showMessageBoxSync = () => 1;
@@ -1361,6 +1363,7 @@ test("ZIP and CRX package imports load a sample extension and reject unsafe path
   await writeFile(zipPath, zip.toBuffer());
   await newTask("Package check");
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByText("Developer options", { exact: true }).click();
   const choose = async (path: string) =>
     app.evaluate(({ dialog }, path) => {
       dialog.showOpenDialog = async () => ({
@@ -1385,6 +1388,7 @@ test("ZIP and CRX package imports load a sample extension and reject unsafe path
     website.getByText("Package extension active", { exact: true }),
   ).toBeVisible();
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByText("Developer options", { exact: true }).click();
   await shell.getByRole("button", { name: "Remove Packaged sample" }).click();
   const crxHeader = Buffer.alloc(12);
   crxHeader.write("Cr24");
@@ -1409,7 +1413,7 @@ test("ZIP and CRX package imports load a sample extension and reject unsafe path
   await expect(shell.getByRole("dialog").getByRole("alert")).toContainText(
     "unsafe",
   );
-  await expect(shell.getByText("No extensions loaded.")).toBeVisible();
+  await expect(shell.getByText("No extensions installed.")).toBeVisible();
 });
 
 test("Store links download a package through the UI and invalid links are rejected", async () => {
@@ -1437,6 +1441,7 @@ test("Store links download a package through the UI and invalid links are reject
     { destination, origin },
   );
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByText("Developer options", { exact: true }).click();
   const input = shell.getByLabel("Chrome Web Store link or extension ID");
   await input.fill("https://example.com/not-an-extension");
   await shell
@@ -1526,6 +1531,7 @@ test("extension popups and worker shortcuts fill only the selected live page", a
   );
   await newTask("First login");
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByText("Developer options", { exact: true }).click();
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({
       canceled: false,
