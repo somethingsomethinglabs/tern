@@ -1,7 +1,8 @@
 import { test, expect, _electron as electron } from '@playwright/test';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { generateKeyPairSync, createHash } from 'node:crypto';
 
 // Exercise the real sandboxed Store preload at its real origin, without a
 // network dependency or permission to silently install fixture code.
@@ -46,6 +47,31 @@ test('store page bridge is scoped to its origin and unsigned packages never reac
     await store.evaluate(() => { const frame = document.createElement('iframe'); frame.src = 'https://chromewebstore.google.com/frame'; document.body.append(frame); });
     await expect.poll(() => store.frames().length).toBe(2);
     expect(await store.frames()[1].evaluate(() => typeof (window as any).electronWebstore)).toBe('undefined');
+  } finally {
+    await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; }).catch(() => {});
+    await app.close(); await rm(profile, { recursive: true, force: true });
+  }
+});
+
+
+test('store registrations still restore when the developer import list is corrupt', async () => {
+  const profile = await mkdtemp(join(tmpdir(), 'tern-store-restore-'));
+  const key = generateKeyPairSync('rsa', { modulusLength: 2048 }).publicKey.export({ type: 'spki', format: 'der' });
+  const id = createHash('sha256').update(key).digest('hex').slice(0, 32).replace(/[0-9a-f]/g, digit => String.fromCharCode(97 + parseInt(digit, 16)));
+  const path = join(profile, 'store-extensions', id, '1.0');
+  await mkdir(path, { recursive: true });
+  await writeFile(join(path, 'manifest.json'), JSON.stringify({ manifest_version: 3, name: 'Restored store fixture', version: '1.0', key: key.toString('base64') }));
+  await writeFile(join(profile, 'extensions.json'), 'broken developer registry');
+  await writeFile(join(profile, 'preferences.json'), JSON.stringify({ summaryModel: '' }));
+  await writeFile(join(profile, 'store-extensions.json'), JSON.stringify({ format: 1, entries: [{ id, path, name: 'Restored store fixture', version: '1.0', key: key.toString('base64'), enabled: true, permissions: [], source: 'chrome-web-store' }] }));
+  const app = await electron.launch({ args: ['.'], cwd: process.cwd(), chromiumSandbox: true,
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '', TERN_PROFILE: profile } });
+  try {
+    const shell = await app.firstWindow();
+    await shell.getByRole('img', { name: 'Tern', exact: true }).waitFor();
+    const state = await shell.evaluate(() => (window as any).tern.snapshot());
+    expect(state.extensions).toEqual([expect.objectContaining({ id, name: 'Restored store fixture', enabled: true, error: '' })]);
+    expect(await app.evaluate(({ session }, id) => !!session.fromPartition('persist:trailrest-web').extensions.getExtension(id), id)).toBe(true);
   } finally {
     await app.evaluate(({ dialog }) => { dialog.showMessageBoxSync = () => 1; }).catch(() => {});
     await app.close(); await rm(profile, { recursive: true, force: true });

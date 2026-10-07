@@ -1564,11 +1564,9 @@ async function start() {
   });
   // Install permission/download handlers and create the window before running
   // any remembered extension background scripts.
-  try {
-    await extensions.restore();
-    await storeExtensions.restore();
-  } catch (error) {
-    notice = String(error);
+  for (const library of [extensions, storeExtensions]) {
+    try { await library.restore(); }
+    catch (error) { notice = [notice, String(error)].filter(Boolean).join("\n"); }
   }
   await window.loadURL("tern://app/index.html");
   systemReady = true;

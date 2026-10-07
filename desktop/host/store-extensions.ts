@@ -69,11 +69,10 @@ export class StoreExtensions {
     this.registry = join(profile, "store-extensions.json");
   }
   list(): Snapshot["extensions"] {
-    return this.entries.map(entry => ({ ...entry, error: this.errors.get(entry.id) ?? "",
-      updateStatus: this.statuses.get(entry.id) ?? "", store: true }));
+    return this.entries.map(({ id, name, version, path, enabled }) => ({ id, name, version, path, enabled, error: this.errors.get(id) ?? "",
+      updateStatus: this.statuses.get(id) ?? "", store: true }));
   }
   has(id: string) { return this.entries.some(entry => entry.id === id); }
-  owns(path: string) { return this.entries.some(entry => entry.path === path); }
   private serial<T>(work: () => Promise<T>) {
     const result = this.queue.then(work); this.queue = result.catch(() => {}); return result;
   }
