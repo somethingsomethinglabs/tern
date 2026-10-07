@@ -4,6 +4,16 @@ Release artifacts and the update feed use [somethingsomethinglabs/tern](https://
 
 The owner selected GPL-3.0-only for the desktop application and shared browser source. Their license files ship with the corresponding source. Fonts and other dependencies keep their original notices. The release also includes the source and build scripts for electron-chrome-extensions 4.9.0 at upstream release commit `927ac340c3c6cc462f636a50ccd9991df0cd2e12`.
 
+## Chrome Web Store installation in 0.1.4
+
+The next Linux release adds direct installation from Chrome Web Store listings. The store's Add to Tern action downloads and verifies CRX3 developer and pinned store publisher signatures, then requests consent against the verified manifest. Store extensions keep stable identity, versioned installation files and a separate registry. Existing developer imports are preserved.
+
+Store extensions update after startup and every five hours. New permissions and content-script website matches require approval through the Extensions panel. Failed replacements restore the previous version. Disable state persists, including across update checks and restarts. Store installation supports Manifest V3 browser extensions; native messaging and file access remain restricted.
+
+The pinned `electron-chrome-web-store` 0.13.0 dependency supplies only the renderer bridge. Tern never initializes its installer or IPC handlers. Its copied preload has an exact-origin/top-frame guard, correct management event arguments and argument logging disabled. A build checksum forces review on dependency changes. Its MIT notice ships with the package. The unused upstream archive dependency is overridden to the audited adm-zip 0.6.1 release.
+
+The extension lifecycle tests cover signature rejection, cancellation, added access, restart/disable persistence and failed-update rollback. The native bridge test exercises the real preload at the store origin and verifies isolation from lookalike origins and child frames. The optional live-store smoke check uses a disposable profile and installs Dark Reader, opens its popup, restarts, disables/enables and removes it. Run `node desktop/scripts/check-extension-store.mjs` from the repository root; set `TERN_EXECUTABLE` for the packaged binary.
+
 ## Published release
 
 The Linux 0.1.1 binary was built from clean commit `8515d02538243b9c24f889e3e63a40ca96598862`, tagged `linux-v0.1.1`, with Electron 44.5.1. [Release CI](https://github.com/somethingsomethinglabs/tern/actions/runs/37410603501) passed on that commit. The archive SHA-256 is `b196a40493310c56fc85d980b09cddeb07607c3a6ec109cd23ee37ce572fd888`. An anonymous download matched that digest, and the application's updater accepted the live signed feed.

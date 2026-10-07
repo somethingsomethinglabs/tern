@@ -45,6 +45,8 @@ import { PageSelection } from "@tern/core/page-selection";
 import { readTheme } from "./theme.js";
 import { ExtensionLibrary } from "./extensions.js";
 import { ExtensionBrowser } from "./extension-browser.js";
+import { StoreExtensions } from "./store-extensions.js";
+import { installChromeWebStore, STORE_ORIGIN } from "./chrome-web-store.js";
 import { TaskSummaries } from "./task-summaries.js";
 import { TaskContexts } from "./task-context.js";
 import { TaskStarter } from "./task-start.js";
@@ -114,6 +116,7 @@ const blockedPopups = new Map<string, { opener: WebContents; url: string }>();
 const downloadItems = new Map<string, Electron.DownloadItem>();
 let extensions: ExtensionLibrary;
 let extensionBrowser: ExtensionBrowser;
+let storeExtensions: StoreExtensions;
 let theme = readTheme();
 let notice = "";
 let quitting = false;
@@ -214,7 +217,7 @@ function snapshot(): Snapshot {
     taskStartPending: taskStarter.pending,
     preferences: preferences.value,
     theme,
-    extensions: (extensions?.list() ?? []).map((extension) => ({
+    extensions: [...(extensions?.list() ?? []), ...(storeExtensions?.list() ?? [])].map((extension) => ({
       ...extension,
       canOpen: extensionBrowser?.canOpen(extension.id) ?? false,
     })),
@@ -842,6 +845,26 @@ async function command(raw: unknown) {
         notice = "Cached website files cleared.";
       }
       break;
+    case "browseExtensionStore": {
+      if (views.size + restoration.size >= 100) throw new Error("Close a page before opening another.");
+      if (!selectedTask()) {
+        const id = randomUUID();
+        workspace.tasks.push({ id, title: "Extensions", lifecycle: "Active", note: "", selectedPageId: null });
+        workspace.selectedTaskId = id;
+      }
+      overviewOpen = false;
+      const page = newPage(selectedTask()!.id, STORE_ORIGIN + "/");
+      showPage(page);
+      break;
+    }
+    case "checkExtensionUpdates":
+      await storeExtensions.checkUpdates(true);
+      notice = "Extension update check complete. See each extension for its status.";
+      break;
+    case "setExtensionEnabled":
+      if (typeof value.enabled !== "boolean") throw new Error("Invalid extension state.");
+      await storeExtensions.setEnabled(text(value.id, 32), value.enabled);
+      break;
     case "importExtension": {
       const result = await dialog.showOpenDialog(window, {
         title: "Import extension package",
@@ -945,9 +968,13 @@ async function command(raw: unknown) {
         await extensions.add(result.filePaths[0]);
       break;
     }
-    case "removeExtension":
-      extensions.remove(text(value.path, 8192));
+    case "removeExtension": {
+      const path = text(value.path, 8192);
+      const storeEntry = storeExtensions.list().find(entry => entry.path === path);
+      if (storeEntry) await storeExtensions.remove(storeEntry.id);
+      else extensions.remove(path);
       break;
+    }
     case "openExtension":
       extensionBrowser.open(text(value.id, 100));
       break;
@@ -1514,15 +1541,39 @@ async function start() {
       publish();
     },
   });
+  storeExtensions = new StoreExtensions(guests, app.getPath("userData"), {
+    chromeVersion: process.versions.chrome,
+    fetch: (url, options) => net.fetch(url, options),
+    changed: publish,
+    async consent(details) {
+      const response = await dialog.showMessageBox(window, {
+        type: "question", message: (details.update ? "Update " : "Install ") + details.name + "?",
+        detail: `Version ${details.version}\n\nRequested access:\n${details.permissions.join("\n") || "None declared"}\n\nExtensions can read and change websites covered by their access. Some Chrome features are not supported in Tern.`,
+        buttons: ["Cancel", details.update ? "Approve update" : "Install extension"], defaultId: 0, cancelId: 0,
+      });
+      return response.response === 1;
+    },
+  });
+  installChromeWebStore(guests, storeExtensions, {
+    selected: contents => currentContents() === contents && !overviewOpen && !contents.isDestroyed(),
+    async confirmRemoval(name) {
+      const result = await dialog.showMessageBox(window, { type: "question", message: "Remove " + name + "?",
+        buttons: ["Cancel", "Remove extension"], defaultId: 0, cancelId: 0 });
+      return result.response === 1;
+    },
+  });
   // Install permission/download handlers and create the window before running
   // any remembered extension background scripts.
   try {
     await extensions.restore();
+    await storeExtensions.restore();
   } catch (error) {
     notice = String(error);
   }
   await window.loadURL("tern://app/index.html");
   systemReady = true;
+  const extensionUpdateTimer = setTimeout(() => void storeExtensions.checkUpdates(), 30000); extensionUpdateTimer.unref();
+  const extensionUpdateRecurring = setInterval(() => void storeExtensions.checkUpdates(), 5 * 60 * 60 * 1000); extensionUpdateRecurring.unref();
   openSystemURLs(pendingSystemURLs); pendingSystemURLs = [];
   if (app.isPackaged && updater.state.configured) {
     const timer = setTimeout(() => void updater.check(), 10000); timer.unref();

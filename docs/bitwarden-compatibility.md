@@ -40,7 +40,7 @@ The packaged executable also passes the real-package login-screen check. Its [pa
 
 An immediate Log in click during Bitwarden's first-run initialization sometimes leaves the carousel displayed. A paced check after initialization reaches login. This upstream UI/host timing interaction is not proven resolved; the smoke check explicitly allows three seconds for initialization. If encountered, wait and choose Log in again.
 
-Actual account authentication, vault decryption, lock/unlock, saving real logins, Bitwarden autofill, passkeys, SSO, biometric/native-app integration and clipboard behavior still require compatibility testing. The sample-extension autofill check establishes the browser integration, not those Bitwarden account workflows. Extension auto-updates and full Chrome compatibility remain absent.
+Actual account authentication, vault decryption, lock/unlock, saving real logins, Bitwarden autofill, passkeys, SSO, biometric/native-app integration and clipboard behavior still require compatibility testing. The sample-extension autofill check establishes the browser integration, not those Bitwarden account workflows. Store-installed extensions now have automatic updates. Existing developer imports remain manually managed, and full Chrome compatibility remains absent.
 
 ## Dependencies
 

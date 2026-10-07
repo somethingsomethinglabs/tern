@@ -50,6 +50,9 @@
     },
     "xcode": {
       "uuid": "11.1.1"
+    },
+    "electron-chrome-web-store": {
+      "adm-zip": "0.6.1"
     }
   }
 }
