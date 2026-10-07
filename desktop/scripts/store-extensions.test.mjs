@@ -109,3 +109,8 @@ test('successful updates retain only the current and previous working versions',
   const files=await readdir(join(f.profile,'store-extensions',id));
   assert.equal(files.length,2);assert.ok(files.some(name=>name.startsWith('1.2-')));assert.ok(files.some(name=>name.startsWith('1.3-')));
 });
+test('a session without extension support fails before download or consent',async t=>{
+  const f=await setup(t);f.session.isPersistent=()=>false;
+  await assert.rejects(f.library.install(id),/extension-capable browsing session/);
+  assert.equal(f.counters().fetches,0);assert.equal(f.counters().consents,0);
+});

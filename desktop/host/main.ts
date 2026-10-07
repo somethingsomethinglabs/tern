@@ -52,6 +52,7 @@ import { TaskContexts } from "./task-context.js";
 import { TaskStarter } from "./task-start.js";
 import { basicTaskPlan, plannedWorkspace } from "@tern/core/task-plan";
 import { profileDirectory, WEBSITE_PARTITION } from "./profile.js";
+import { volatileWebsiteProfile } from "./volatile-profile.js";
 import { PageRestoration } from "./page-restoration.js";
 import { CookieStore } from "./cookies.js";
 import { ReleaseUpdater } from "./updates.js";
@@ -1261,7 +1262,13 @@ async function start() {
   }
   updater = new ReleaseUpdater(app.getPath("exe"), app.getVersion(), process.resourcesPath, publish);
   if (app.isPackaged) await updater.initialize();
-  guests = session.fromPartition(cookieSecurity.cookieStorage === "session" ? "tern-web-temporary" : WEBSITE_PARTITION);
+  const volatileProfile = cookieSecurity.cookieStorage === "session" ? volatileWebsiteProfile() : undefined;
+  if (volatileProfile) {
+    guests = session.fromPath(volatileProfile.path, { cache: false });
+    process.once("exit", () => volatileProfile.close());
+  } else {
+    guests = session.fromPartition(cookieSecurity.cookieStorage === "session" ? "tern-web-temporary" : WEBSITE_PARTITION);
+  }
   cookieStore = new CookieStore(guests);
   extensions = new ExtensionLibrary(guests, app.getPath("userData"));
   permissionController = installWebsitePermissions(guests, {

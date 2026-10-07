@@ -137,6 +137,8 @@ export class StoreExtensions {
   }
   private async installNow(id: string, update: boolean, interactive: boolean, authorized: () => boolean = () => true) {
     if (!/^[a-p]{32}$/.test(id)) throw new Error("Invalid store extension ID.");
+    if (this.session.isPersistent && !this.session.isPersistent())
+      throw new Error("Extensions need an extension-capable browsing session. Configure the operating system keyring or provide Linux shared memory and restart Tern.");
     if (!this.writable) throw new Error("The saved store extension list needs repair before installation.");
     const previous = this.entries.find(entry => entry.id === id);
     if (!update && (previous || this.session.extensions.getExtension(id))) throw new Error("This extension is already installed.");
