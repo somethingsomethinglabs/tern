@@ -1,7 +1,7 @@
 {
   "name": "@tern/desktop",
   "productName": "Tern",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "A browser for settling and resuming tasks",
   "private": true,
   "type": "module",
