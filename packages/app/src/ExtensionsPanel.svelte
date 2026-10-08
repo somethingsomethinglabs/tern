@@ -15,7 +15,7 @@
 </script>
 
 <section>
-  <h2 id="dialog-title">Extensions</h2>
+  <h2 id="dialog-title">Manage extensions</h2>
   <p>Find extensions in the Chrome Web Store and choose Add to Tern. Review their requested access before installing.</p>
   <button class="primary" disabled={busy} onclick={async () => {
     if (await run({ type: "browseExtensionStore" })) close();
@@ -38,7 +38,7 @@
         {#if extension.canOpen}<button disabled={busy} onclick={async () => {
           if (await run({ type: "openExtension", id: extension.id })) close();
         }}>Open {extension.name}</button>{/if}
-        {#if extension.store}<button disabled={busy} onclick={() => void run({
+        {#if extension.id}<button disabled={busy} onclick={() => void run({
           type: "setExtensionEnabled", id: extension.id, enabled: extension.enabled === false,
         })}>{extension.enabled === false ? "Enable" : "Disable"} {extension.name}</button>{/if}
         <button disabled={busy} onclick={() => void run({ type: "removeExtension", path: extension.path })}>Remove {extension.name}</button>

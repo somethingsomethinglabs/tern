@@ -117,6 +117,7 @@ export type Snapshot = Omit<Workspace, "pages"> & {
     path: string;
     error: string;
     canOpen?: boolean;
+    pinned?: boolean;
     store?: boolean;
     enabled?: boolean;
     updateStatus?: string;
@@ -164,6 +165,7 @@ export type Command =
   | { type: "downloadExtension"; source: string }
   | { type: "loadExtension" }
   | { type: "browseExtensionStore" | "checkExtensionUpdates" }
+  | { type: "setExtensionPinned"; id: string; pinned: boolean }
   | { type: "setExtensionEnabled"; id: string; enabled: boolean }
   | { type: "removeExtension"; path: string }
   | { type: "openExtension"; id: string }

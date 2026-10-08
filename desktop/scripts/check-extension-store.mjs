@@ -57,6 +57,7 @@ try {
   await writeFile(join(profile,'preferences.json'),JSON.stringify({summaryModel:''}));
   let shell=await launch();
   await shell.getByRole('button',{name:'Extensions',exact:true}).click();
+  await shell.getByRole('button',{name:'Manage extensions',exact:true}).click();
   await shell.getByRole('button',{name:'Browse Chrome Web Store'}).click();
   const deadline=Date.now()+30000;
   while(!app.context().pages().some(page=>page.url().startsWith('https://chromewebstore.google.com/'))) {
@@ -103,6 +104,7 @@ try {
   if(packaged)assert.equal(nativeApprovals,1);
   else {const prompts=await app.evaluate(()=>globalThis.storePrompts);assert.equal(prompts.length,1);assert.match(prompts[0].message,/Install Dark Reader/);}
   await shell.getByRole('button',{name:'Extensions',exact:true}).click();
+  await shell.getByRole('button',{name:'Manage extensions',exact:true}).click();
   await mkdir(resolve('design/qa/extensions'),{recursive:true});
   await shell.screenshot({path:resolve('design/qa/extensions/store-installed.png')});
   await shell.getByRole('dialog').getByRole('button',{name:'Open Dark Reader',exact:true}).click();

@@ -1,3 +1,4 @@
+import { ExtensionPins } from "./extension-pins.js";
 import { SearchController, BUILTIN_SEARCH_URL, externalShortcut } from "@tern/core/search";
 import { Metasearch } from "./metasearch.js";
 import { WorkspaceModel, checkedText } from "@tern/core/workspace-model";
@@ -116,6 +117,7 @@ const recentGestures = new WeakMap<WebContents, number>();
 const blockedPopups = new Map<string, { opener: WebContents; url: string }>();
 const downloadItems = new Map<string, Electron.DownloadItem>();
 let extensions: ExtensionLibrary;
+let extensionPins: ExtensionPins;
 let extensionBrowser: ExtensionBrowser;
 let storeExtensions: StoreExtensions;
 let theme = readTheme();
@@ -220,6 +222,7 @@ function snapshot(): Snapshot {
     theme,
     extensions: [...(extensions?.list() ?? []), ...(storeExtensions?.list() ?? [])].map((extension) => ({
       ...extension,
+      pinned: extensionPins?.has(extension.id) ?? false,
       canOpen: extensionBrowser?.canOpen(extension.id) ?? false,
     })),
     notice,
@@ -862,9 +865,16 @@ async function command(raw: unknown) {
       await storeExtensions.checkUpdates(true);
       notice = "Extension update check complete. See each extension for its status.";
       break;
+    case "setExtensionPinned": {
+      const id = text(value.id, 32);
+      if (typeof value.pinned !== "boolean" || ![...extensions.list(), ...storeExtensions.list()].some(extension => extension.id === id)) throw new Error("Invalid extension pin.");
+      extensionPins.set(id, value.pinned);
+      break;
+    }
     case "setExtensionEnabled":
       if (typeof value.enabled !== "boolean") throw new Error("Invalid extension state.");
-      await storeExtensions.setEnabled(text(value.id, 32), value.enabled);
+      if (storeExtensions.list().some(extension => extension.id === text(value.id, 32))) await storeExtensions.setEnabled(text(value.id, 32), value.enabled);
+      else await extensions.setEnabled(text(value.id, 32), value.enabled);
       break;
     case "importExtension": {
       const result = await dialog.showOpenDialog(window, {
@@ -1271,6 +1281,7 @@ async function start() {
   }
   cookieStore = new CookieStore(guests);
   extensions = new ExtensionLibrary(guests, app.getPath("userData"));
+  extensionPins = new ExtensionPins(app.getPath("userData"));
   permissionController = installWebsitePermissions(guests, {
     policyPath: join(app.getPath("userData"), "site-permissions.json"),
     changed: publish,

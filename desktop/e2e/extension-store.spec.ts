@@ -24,6 +24,7 @@ test('store page bridge is scoped to its origin and unsigned packages never reac
       dialog.showMessageBox = async () => { throw new Error('Consent must not run for unsigned code'); };
     });
     await shell.getByRole('button', { name: 'Extensions', exact: true }).click();
+  await shell.getByRole("button", { name: "Manage extensions", exact: true }).click();
     await expect(shell.getByLabel('Chrome Web Store link or extension ID')).not.toBeVisible();
     await shell.getByRole('button', { name: 'Browse Chrome Web Store' }).click();
     await expect.poll(() => app.context().pages().some(page => page.url() === 'https://chromewebstore.google.com/')).toBe(true);

@@ -1140,6 +1140,7 @@ test("the extensions button loads, remembers and removes an unpacked content scr
   );
   await newTask("Extension check");
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByRole("button", { name: "Manage extensions", exact: true }).click();
   await shell.getByText("Developer options", { exact: true }).click();
   await app.evaluate(({ dialog }) => {
     dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
@@ -1202,6 +1203,7 @@ test("the extensions button loads, remembers and removes an unpacked content scr
     restored.getByText("Extension active", { exact: true }),
   ).toBeVisible();
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByRole("button", { name: "Manage extensions", exact: true }).click();
   await shell.getByText("Developer options", { exact: true }).click();
   await shell.getByRole("button", { name: "Remove Sample extension" }).click();
   await expect(shell.getByText("No extensions installed.")).toBeVisible();
@@ -1363,6 +1365,7 @@ test("ZIP and CRX package imports load a sample extension and reject unsafe path
   await writeFile(zipPath, zip.toBuffer());
   await newTask("Package check");
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByRole("button", { name: "Manage extensions", exact: true }).click();
   await shell.getByText("Developer options", { exact: true }).click();
   const choose = async (path: string) =>
     app.evaluate(({ dialog }, path) => {
@@ -1388,6 +1391,7 @@ test("ZIP and CRX package imports load a sample extension and reject unsafe path
     website.getByText("Package extension active", { exact: true }),
   ).toBeVisible();
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByRole("button", { name: "Manage extensions", exact: true }).click();
   await shell.getByText("Developer options", { exact: true }).click();
   await shell.getByRole("button", { name: "Remove Packaged sample" }).click();
   const crxHeader = Buffer.alloc(12);
@@ -1441,6 +1445,7 @@ test("Store links download a package through the UI and invalid links are reject
     { destination, origin },
   );
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByRole("button", { name: "Manage extensions", exact: true }).click();
   await shell.getByText("Developer options", { exact: true }).click();
   const input = shell.getByLabel("Chrome Web Store link or extension ID");
   await input.fill("https://example.com/not-an-extension");
@@ -1531,6 +1536,7 @@ test("extension popups and worker shortcuts fill only the selected live page", a
   );
   await newTask("First login");
   await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByRole("button", { name: "Manage extensions", exact: true }).click();
   await shell.getByText("Developer options", { exact: true }).click();
   await app.evaluate(({ dialog }, path) => {
     dialog.showOpenDialog = async () => ({
@@ -1552,6 +1558,9 @@ test("extension popups and worker shortcuts fill only the selected live page", a
   await expect(
     second.getByRole("heading", { name: "Second page" }),
   ).toBeVisible();
+  await shell.getByRole("button", { name: "Extensions", exact: true }).click();
+  await shell.getByRole("button", { name: "Pin Vault fixture", exact: true }).click();
+  await shell.keyboard.press("Escape");
   let opened = app.waitForEvent("window");
   await shell
     .getByRole("button", { name: "Open Vault fixture", exact: true })

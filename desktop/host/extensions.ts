@@ -27,13 +27,13 @@ export class ExtensionLibrary {
   }
   async restore() {
     if (!existsSync(this.path)) return;
-    let paths: string[];
+    let paths: (string | Snapshot["extensions"][number])[];
     try {
       paths = JSON.parse(readFileSync(this.path, "utf8"));
       if (
         !Array.isArray(paths) ||
         paths.length > 50 ||
-        !paths.every((path) => typeof path === "string" && isAbsolute(path))
+        !paths.every((entry) => typeof entry === "string" ? isAbsolute(entry) : !!entry && typeof entry.path === "string" && isAbsolute(entry.path) && typeof entry.id === "string" && typeof entry.name === "string" && typeof entry.version === "string" && typeof entry.enabled === "boolean")
       )
         throw new Error();
     } catch {
@@ -42,9 +42,12 @@ export class ExtensionLibrary {
         "The saved extension list could not be read. It has been left unchanged.",
       );
     }
-    for (const path of new Set(paths)) {
+    for (const saved of paths) {
+      const path = typeof saved === "string" ? saved : saved.path;
+      if (this.entries.some(entry => entry.path === path)) continue;
       try {
-        await this.load(path);
+        if (typeof saved !== "string" && saved.enabled === false) this.entries.push({ ...saved, error: "", enabled: false });
+        else await this.load(path);
       } catch (error) {
         this.entries.push({
           id: "",
@@ -65,7 +68,7 @@ export class ExtensionLibrary {
       mkdirSync(this.directory, { recursive: true });
       writeFileSync(
         this.path + ".tmp",
-        JSON.stringify(entries.map((item) => item.path)),
+        JSON.stringify(entries.map((item) => ({ ...item, enabled: item.enabled !== false }))),
         { mode: 0o600 },
       );
       renameSync(this.path + ".tmp", this.path);
@@ -93,6 +96,7 @@ export class ExtensionLibrary {
       version: extension.version,
       path,
       error: "",
+      enabled: true,
     };
     this.entries.push(entry);
     return entry;
@@ -114,6 +118,26 @@ export class ExtensionLibrary {
       this.session.extensions.removeExtension(entry.id);
       this.entries = this.entries.filter((item) => item !== entry);
       throw error;
+    }
+  }
+  async setEnabled(id: string, enabled: boolean) {
+    const entry = this.entries.find(item => item.id === id);
+    if (!entry) throw new Error("Extension not found.");
+    if ((entry.enabled !== false) === enabled) return;
+    if (!enabled) {
+      this.save(this.entries.map(item => item === entry ? { ...item, enabled: false } : item));
+      this.session.extensions.removeExtension(id);
+      entry.enabled = false;
+    } else {
+      const loaded = await this.load(entry.path);
+      try {
+        this.save(this.entries.filter(item => item !== entry));
+        this.entries = this.entries.filter(item => item !== entry);
+      } catch (error) {
+        this.session.extensions.removeExtension(loaded.id);
+        this.entries = this.entries.filter(item => item !== loaded);
+        throw error;
+      }
     }
   }
   remove(path: string) {
