@@ -4,6 +4,12 @@ Release artifacts and the update feed use [somethingsomethinglabs/tern](https://
 
 The owner selected GPL-3.0-only for the desktop application and shared browser source. Their license files ship with the corresponding source. Fonts and other dependencies keep their original notices. The release also includes the source and build scripts for electron-chrome-extensions 4.9.0 at upstream release commit `927ac340c3c6cc462f636a50ccd9991df0cd2e12`.
 
+## Extension menu in 0.1.5
+
+[Linux 0.1.5](https://github.com/somethingsomethinglabs/tern/releases/tag/linux-v0.1.5) is published from clean source commit `2cf926bc30b9ef44af5c0b09d998c5054db8375a`, with signed update sequence 5. [Release CI](https://github.com/somethingsomethinglabs/tern/actions/runs/37705359489) passed 74 core tests, 47 desktop unit checks, 55 native desktop tests and packaged application checks. The downloaded archive's signature, size and SHA-256 were verified. Its hardened binary passed the live Chrome Web Store install, native consent, popup, restart, disable/enable and removal checks.
+
+Click Extensions to see installed extensions and their enabled state. Pin controls persist across restarts; pinned enabled popup actions appear on the toolbar. Manage extensions opens the store installation, update, enable/disable, removal and developer-import controls. Developer imports now remember disabled state, with migration from the previous path-only registry.
+
 ## Chrome Web Store installation in 0.1.4
 
 [Linux 0.1.4](https://github.com/somethingsomethinglabs/tern/releases/tag/linux-v0.1.4) is published from clean source commit `4ac9ed8717a7de5b05212078022b3058276ccf6b`, with signed update sequence 4. [Release CI](https://github.com/somethingsomethinglabs/tern/actions/runs/37702884564) passed 74 core tests, 44 desktop unit checks and 54 native desktop tests. The anonymous public updater verified the feed and archive and installed 0.1.4 in an isolated installation. The hardened binary also passed the live Dark Reader store flow with real native consent, popup, restart and disabled-state checks without an OS keyring.
